@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Priority { LOW NORMAL HIGH MAXIMUM }
+enum DependencyType { FS SS }
+enum WorkPackageStatus { PLANNED IN_PROGRESS DONE BLOCKED }
+enum ProjectStatus { PLANNED ACTIVE COMPLETED ON_HOLD }
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  employees   EmployeeProfile[]
+  workPackages WorkPackage[]
+}
+
+model EmployeeProfile {
+  employeeId                String   @id @default(cuid())
+  employeeName              String
+  departmentId              String
+  role                      String
+  hourlyCost                Float
+  weeklyCapacityHours       Int
+  workLocationCountryCode   String
+  workLocationSubdivisionCode String?
+  active                    Boolean @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  department                Department @relation(fields: [departmentId], references: [id])
+  absences                  EmployeeAbsence[]
+  workPackages              WorkPackage[]
+}
+
+model EmployeeAbsence {
+  id         String   @id @default(cuid())
+  employeeId String
+  startDate  DateTime
+  endDate    DateTime
+  reason     String
+  employee   EmployeeProfile @relation(fields: [employeeId], references: [employeeId])
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  projectName String
+  projectCode String   @unique
+  colorHex    String
+  clientName  String
+  status      ProjectStatus
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workPackages WorkPackage[]
+}
+
+model WorkPackage {
+  id                           String   @id @default(cuid())
+  departmentId                 String
+  employeeId                   String
+  title                        String
+  description                  String
+  earliestStartDate            DateTime
+  deadlineDate                 DateTime
+  durationDays                 Int
+  scheduledStartDate           DateTime
+  scheduledEndDateExclusive    DateTime
+  priority                     Priority
+  projectId                    String
+  status                       WorkPackageStatus
+  workLocationCountryCode      String?
+  workLocationSubdivisionCode  String?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id])
+  employee   EmployeeProfile @relation(fields: [employeeId], references: [employeeId])
+  project    Project @relation(fields: [projectId], references: [id])
+  predecessorDeps TaskDependency[] @relation("Predecessor")
+  successorDeps   TaskDependency[] @relation("Successor")
+  schedulingEvents SchedulingEvent[]
+}
+
+model TaskDependency {
+  id                String @id @default(cuid())
+  predecessorTaskId String
+  successorTaskId   String
+  type              DependencyType
+  predecessor       WorkPackage @relation("Predecessor", fields: [predecessorTaskId], references: [id])
+  successor         WorkPackage @relation("Successor", fields: [successorTaskId], references: [id])
+}
+
+model SchedulingEvent {
+  id          String   @id @default(cuid())
+  workPackageId String
+  eventType   String
+  payloadJson Json
+  createdAt   DateTime @default(now())
+  workPackage WorkPackage @relation(fields: [workPackageId], references: [id])
+}

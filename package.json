@@ -1,0 +1,14 @@
+{
+  "name": "optimizacion-gestion-de-proyectos",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/backend & npm run dev -w apps/frontend",
+    "build": "npm run build -w apps/backend && npm run build -w apps/frontend",
+    "test": "npm run test -w apps/backend && npm run test -w apps/frontend",
+    "test:e2e": "npm run test:e2e -w apps/frontend"
+  }
+}
