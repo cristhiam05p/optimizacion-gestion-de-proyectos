@@ -266,26 +266,26 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     }
   };
 
-  return <div className="p-4 space-y-4">
-    <header className="flex flex-wrap items-center justify-between gap-2">
+  return <div className="mx-auto max-w-[1600px] p-4 md:p-6 space-y-5">
+    <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200/70 bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-800 px-5 py-4 text-white shadow-lg shadow-blue-900/20">
       <div>
-        <h1 className="text-2xl font-bold">{t.title}</h1>
-        <p className="text-slate-600">{t.subtitle}</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t.title}</h1>
+        <p className="text-blue-100/90">{t.subtitle}</p>
       </div>
-      <select className="border p-2" value={language} onChange={(e) => setLanguage(e.target.value as Lang)}>
+      <select className="rounded-lg border border-white/30 bg-white/10 p-2 text-sm text-white backdrop-blur-sm" value={language} onChange={(e) => setLanguage(e.target.value as Lang)}>
         <option value="es">Español</option>
         <option value="en">English</option>
         <option value="de">Deutsch</option>
       </select>
     </header>
 
-    <section className="border bg-white p-3 rounded space-y-3">
-      <h2 className="font-semibold">{t.createData}</h2>
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <h2 className="text-lg font-semibold text-slate-800">{t.createData}</h2>
       <div className="flex flex-wrap gap-2">
-        <button className="border px-3 py-1 text-sm" onClick={() => setCreationModal('department')}>{t.createDepartment}</button>
-        <button className="border px-3 py-1 text-sm disabled:opacity-50" disabled={!canCreateEmployee} title={!canCreateEmployee ? t.disabledEmployee : ''} onClick={() => setCreationModal('employee')}>{t.createEmployee}</button>
-        <button className="border px-3 py-1 text-sm" onClick={() => setCreationModal('project')}>{t.createProject}</button>
-        <button className="border px-3 py-1 text-sm disabled:opacity-50" disabled={!canCreateTask} title={!canCreateTask ? t.disabledTask : ''} onClick={() => setCreationModal('task')}>{t.createTask}</button>
+        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700" onClick={() => setCreationModal('department')}>{t.createDepartment}</button>
+        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canCreateEmployee} title={!canCreateEmployee ? t.disabledEmployee : ''} onClick={() => setCreationModal('employee')}>{t.createEmployee}</button>
+        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700" onClick={() => setCreationModal('project')}>{t.createProject}</button>
+        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canCreateTask} title={!canCreateTask ? t.disabledTask : ''} onClick={() => setCreationModal('task')}>{t.createTask}</button>
       </div>
       {(!canCreateEmployee || !canCreateTask) && (
         <div className="text-xs text-slate-500 space-y-1">
@@ -295,24 +295,24 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       )}
     </section>
 
-    <div className="flex gap-2">
-      <select className="border p-2" value={department} onChange={(e) => setDepartment(e.target.value)}>
+    <div className="grid gap-2 md:grid-cols-[200px_1fr]">
+      <select className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm" value={department} onChange={(e) => setDepartment(e.target.value)}>
         <option value="all">{t.all}</option>
         {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
       </select>
-      <input className="border p-2 flex-1" placeholder={t.search} value={query} onChange={(e) => setQuery(e.target.value)} />
+      <input className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm" placeholder={t.search} value={query} onChange={(e) => setQuery(e.target.value)} />
     </div>
 
     <div className="flex flex-wrap gap-2 items-center">
       <span className="text-sm text-slate-600">{t.visibleRange}: {format(dates[0], 'dd MMM yyyy', { locale })} - {format(dates[dates.length - 1], 'dd MMM yyyy', { locale })}</span>
-      <button className="border px-3 py-1 text-sm" onClick={() => setRangeOffsetDays((v) => v - 30)}>{t.previousMonth}</button>
-      <button className="border px-3 py-1 text-sm" onClick={() => setRangeOffsetDays((v) => v + 30)}>{t.nextMonth}</button>
-      <button className="border px-3 py-1 text-sm" onClick={() => setRangeOffsetDays(0)}>{t.today}</button>
+      <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm transition hover:bg-slate-50" onClick={() => setRangeOffsetDays((v) => v - 30)}>{t.previousMonth}</button>
+      <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm transition hover:bg-slate-50" onClick={() => setRangeOffsetDays((v) => v + 30)}>{t.nextMonth}</button>
+      <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm transition hover:bg-slate-50" onClick={() => setRangeOffsetDays(0)}>{t.today}</button>
     </div>
 
     <div className="flex flex-wrap gap-2">{projects.map((p) => <span key={p.id} className="px-2 py-1 rounded text-white text-xs" style={{ background: p.colorHex }}>{p.projectName}</span>)}</div>
 
-    <div className="overflow-auto border bg-white">
+    <div className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="sticky top-0 z-20 bg-white border-b">
         <div className="flex">
           <div className="sticky left-0 bg-white z-30 border-r" style={{ width: leftColumnWidth }} />
@@ -342,56 +342,56 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       </div>)}
     </div>
 
-    {taskModal && <Modal onClose={() => setTaskModal(null)} title={taskModal.title}><p>{t.taskProject}: {taskModal.project?.projectName}</p><p>{t.taskPriority}: {taskModal.priority}</p><p>{t.taskDuration}: {taskModal.durationDays} {t.days}</p><p>{t.taskStart}: {String(taskModal.scheduledStartDate).slice(0, 10)}</p></Modal>}
-    {employeeModal && <Modal onClose={() => setEmployeeModal(null)} title={employeeModal.employeeName}><p>{t.employeeRole}: {employeeModal.role}</p><p>{t.employeeCost}: {employeeModal.hourlyCost}</p><p>{t.employeeCapacity}: {employeeModal.weeklyCapacityHours}{t.hours}</p></Modal>}
+    {taskModal && <Modal onClose={() => setTaskModal(null)} title={taskModal.title}><p className="text-slate-700">{t.taskProject}: {taskModal.project?.projectName}</p><p className="text-slate-700">{t.taskPriority}: {taskModal.priority}</p><p className="text-slate-700">{t.taskDuration}: {taskModal.durationDays} {t.days}</p><p className="text-slate-700">{t.taskStart}: {String(taskModal.scheduledStartDate).slice(0, 10)}</p></Modal>}
+    {employeeModal && <Modal onClose={() => setEmployeeModal(null)} title={employeeModal.employeeName}><p className="text-slate-700">{t.employeeRole}: {employeeModal.role}</p><p className="text-slate-700">{t.employeeCost}: {employeeModal.hourlyCost}</p><p className="text-slate-700">{t.employeeCapacity}: {employeeModal.weeklyCapacityHours}{t.hours}</p></Modal>}
 
     {creationModal === 'department' && (
       <Modal onClose={closeCreationModal} title={t.createDepartment}>
-        {formError && <p className="text-sm text-red-600">{formError}</p>}
-        <form className="space-y-2 mt-2" onSubmit={submitDepartment}>
-          <input className="border p-2 w-full" placeholder={t.name} value={newDepartment.name} onChange={(e) => setNewDepartment((v) => ({ ...v, name: e.target.value }))} required />
-          <input className="border p-2 w-full" placeholder={t.code} value={newDepartment.code} onChange={(e) => setNewDepartment((v) => ({ ...v, code: e.target.value.toUpperCase() }))} required />
-          <button className="border px-3 py-1 text-sm" type="submit">{t.saveDepartment}</button>
+        {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
+        <form className="space-y-3 mt-3" onSubmit={submitDepartment}>
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.name} value={newDepartment.name} onChange={(e) => setNewDepartment((v) => ({ ...v, name: e.target.value }))} required />
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.code} value={newDepartment.code} onChange={(e) => setNewDepartment((v) => ({ ...v, code: e.target.value.toUpperCase() }))} required />
+          <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{t.saveDepartment}</button>
         </form>
       </Modal>
     )}
 
     {creationModal === 'employee' && (
       <Modal onClose={closeCreationModal} title={t.createEmployee}>
-        {formError && <p className="text-sm text-red-600">{formError}</p>}
-        <form className="space-y-2 mt-2" onSubmit={submitEmployee}>
-          <input className="border p-2 w-full" placeholder={t.name} value={newEmployee.employeeName} onChange={(e) => setNewEmployee((v) => ({ ...v, employeeName: e.target.value }))} required />
-          <select className="border p-2 w-full" value={newEmployee.departmentId} onChange={(e) => setNewEmployee((v) => ({ ...v, departmentId: e.target.value }))} required>
+        {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
+        <form className="space-y-3 mt-3" onSubmit={submitEmployee}>
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.name} value={newEmployee.employeeName} onChange={(e) => setNewEmployee((v) => ({ ...v, employeeName: e.target.value }))} required />
+          <select className="w-full rounded-lg border border-slate-200 p-3" value={newEmployee.departmentId} onChange={(e) => setNewEmployee((v) => ({ ...v, departmentId: e.target.value }))} required>
             <option value="">{t.departmentPlaceholder}</option>
             {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-          <input className="border p-2 w-full" placeholder={t.role} value={newEmployee.role} onChange={(e) => setNewEmployee((v) => ({ ...v, role: e.target.value }))} required />
-          <button className="border px-3 py-1 text-sm" type="submit">{t.saveEmployee}</button>
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.role} value={newEmployee.role} onChange={(e) => setNewEmployee((v) => ({ ...v, role: e.target.value }))} required />
+          <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{t.saveEmployee}</button>
         </form>
       </Modal>
     )}
 
     {creationModal === 'project' && (
       <Modal onClose={closeCreationModal} title={t.createProject}>
-        {formError && <p className="text-sm text-red-600">{formError}</p>}
-        <form className="space-y-2 mt-2" onSubmit={submitProject}>
-          <input className="border p-2 w-full" placeholder={t.titleField} value={newProject.projectName} onChange={(e) => setNewProject((v) => ({ ...v, projectName: e.target.value }))} required />
-          <input className="border p-2 w-full" placeholder={t.code} value={newProject.projectCode} onChange={(e) => setNewProject((v) => ({ ...v, projectCode: e.target.value.toUpperCase() }))} required />
-          <input className="border p-2 w-full" placeholder={t.client} value={newProject.clientName} onChange={(e) => setNewProject((v) => ({ ...v, clientName: e.target.value }))} required />
-          <label className="text-sm">{t.color}</label>
-          <input className="border p-1 w-full" type="color" value={newProject.colorHex} onChange={(e) => setNewProject((v) => ({ ...v, colorHex: e.target.value }))} required />
-          <button className="border px-3 py-1 text-sm" type="submit">{t.saveProject}</button>
+        {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
+        <form className="space-y-3 mt-3" onSubmit={submitProject}>
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.titleField} value={newProject.projectName} onChange={(e) => setNewProject((v) => ({ ...v, projectName: e.target.value }))} required />
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.code} value={newProject.projectCode} onChange={(e) => setNewProject((v) => ({ ...v, projectCode: e.target.value.toUpperCase() }))} required />
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.client} value={newProject.clientName} onChange={(e) => setNewProject((v) => ({ ...v, clientName: e.target.value }))} required />
+          <label className="text-sm font-medium text-slate-700">{t.color}</label>
+          <input className="h-12 w-full cursor-pointer rounded-lg border border-slate-200 p-1" type="color" value={newProject.colorHex} onChange={(e) => setNewProject((v) => ({ ...v, colorHex: e.target.value }))} required />
+          <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{t.saveProject}</button>
         </form>
       </Modal>
     )}
 
     {creationModal === 'task' && (
       <Modal onClose={closeCreationModal} title={t.createTask}>
-        {formError && <p className="text-sm text-red-600">{formError}</p>}
-        <form className="space-y-2 mt-2" onSubmit={submitTask}>
-          <input className="border p-2 w-full" placeholder={t.titleField} value={newTask.title} onChange={(e) => setNewTask((v) => ({ ...v, title: e.target.value }))} required />
-          <input className="border p-2 w-full" placeholder={t.description} value={newTask.description} onChange={(e) => setNewTask((v) => ({ ...v, description: e.target.value }))} required />
-          <select className="border p-2 w-full" value={newTask.employeeId} onChange={(e) => {
+        {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
+        <form className="space-y-3 mt-3" onSubmit={submitTask}>
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.titleField} value={newTask.title} onChange={(e) => setNewTask((v) => ({ ...v, title: e.target.value }))} required />
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.description} value={newTask.description} onChange={(e) => setNewTask((v) => ({ ...v, description: e.target.value }))} required />
+          <select className="w-full rounded-lg border border-slate-200 p-3" value={newTask.employeeId} onChange={(e) => {
             const employeeId = e.target.value;
             const employee = employees.find((x) => x.employeeId === employeeId);
             setNewTask((v) => ({ ...v, employeeId, departmentId: employee?.departmentId || v.departmentId }));
@@ -399,11 +399,11 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
             <option value="">{t.employeePlaceholder}</option>
             {employees.map((emp) => <option key={emp.employeeId} value={emp.employeeId}>{emp.employeeName}</option>)}
           </select>
-          <select className="border p-2 w-full" value={newTask.projectId} onChange={(e) => setNewTask((v) => ({ ...v, projectId: e.target.value }))} required>
+          <select className="w-full rounded-lg border border-slate-200 p-3" value={newTask.projectId} onChange={(e) => setNewTask((v) => ({ ...v, projectId: e.target.value }))} required>
             <option value="">{t.projectPlaceholder}</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.projectName}</option>)}
           </select>
-          <button className="border px-3 py-1 text-sm" type="submit">{t.saveTask}</button>
+          <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{t.saveTask}</button>
         </form>
       </Modal>
     )}
@@ -411,5 +411,13 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
 }
 
 function Modal({ title, children, onClose }: any) {
-  return <div onClick={onClose} className="fixed inset-0 bg-black/50 flex items-center justify-center"><div onClick={(e) => e.stopPropagation()} className="bg-white w-full max-w-lg max-md:max-w-none max-md:h-full p-4"><button aria-label="Close modal" onClick={onClose} className="float-right">✕</button><h2 className="text-lg font-bold">{title}</h2>{children}</div></div>;
+  return <div onClick={onClose} className="fixed inset-0 z-[120] bg-slate-900/55 backdrop-blur-[2px] px-4 py-6 md:px-6 md:py-10 flex items-center justify-center">
+    <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-blue-900/15 md:p-7">
+      <div className="mb-5 flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">{title}</h2>
+        <button aria-label="Close modal" onClick={onClose} className="rounded-full border border-slate-200 px-3 py-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700">✕</button>
+      </div>
+      <div className="space-y-3">{children}</div>
+    </div>
+  </div>;
 }
