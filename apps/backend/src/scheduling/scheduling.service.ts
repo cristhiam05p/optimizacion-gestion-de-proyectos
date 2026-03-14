@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { EmployeeAbsence, Priority, WorkPackage } from '@prisma/client';
-import Holidays from 'date-holidays';
 import { addDays, differenceInCalendarDays, format, isAfter, isBefore, isEqual, isWeekend, startOfDay } from 'date-fns';
+
+const Holidays = require('date-holidays');
 
 @Injectable()
 export class SchedulingService {
