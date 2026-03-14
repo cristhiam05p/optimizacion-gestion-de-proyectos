@@ -27,6 +27,16 @@ export default function Page() {
     onSuccess: refreshAll
   });
 
+  const updateEmployee = useMutation({
+    mutationFn: ({ employeeId, data }: { employeeId: string; data: any }) => api(`/employees/${employeeId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: refreshAll
+  });
+
+  const deleteEmployee = useMutation({
+    mutationFn: (employeeId: string) => api(`/employees/${employeeId}`, { method: 'DELETE' }),
+    onSuccess: refreshAll
+  });
+
   const createTask = useMutation({
     mutationFn: (data: any) => api('/tasks', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: refreshAll
@@ -58,6 +68,8 @@ export default function Page() {
     startDate={new Date().toISOString().slice(0, 10)}
     onCreateDepartment={(data) => createDepartment.mutateAsync(data).then(() => undefined)}
     onCreateEmployee={(data) => createEmployee.mutateAsync(data).then(() => undefined)}
+    onUpdateEmployee={(employeeId, data) => updateEmployee.mutateAsync({ employeeId, data }).then(() => undefined)}
+    onDeleteEmployee={(employeeId) => deleteEmployee.mutateAsync(employeeId).then(() => undefined)}
     onCreateTask={(data) => createTask.mutateAsync(data).then(() => undefined)}
     onUpdateTask={(taskId, data) => updateTask.mutateAsync({ taskId, data }).then(() => undefined)}
     onDeleteTask={(taskId) => deleteTask.mutateAsync(taskId).then(() => undefined)}

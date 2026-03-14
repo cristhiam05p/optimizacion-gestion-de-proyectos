@@ -14,6 +14,8 @@ type Props = {
   startDate: string;
   onCreateDepartment: (data: { name: string; code: string }) => Promise<void>;
   onCreateEmployee: (data: any) => Promise<void>;
+  onUpdateEmployee: (employeeId: string, data: any) => Promise<void>;
+  onDeleteEmployee: (employeeId: string) => Promise<void>;
   onCreateTask: (data: any) => Promise<void>;
   onUpdateTask: (taskId: string, data: any) => Promise<void>;
   onDeleteTask: (taskId: string) => Promise<void>;
@@ -81,6 +83,15 @@ const I18N: Record<Lang, any> = {
     taskOptions: 'Opciones',
     editTask: 'Editar',
     deleteTask: 'Eliminar',
+    employeeOptions: 'Opciones del empleado',
+    editEmployee: 'Editar empleado',
+    deleteEmployee: 'Eliminar empleado',
+    updateEmployee: 'Actualizar empleado',
+    employeeCountry: 'País',
+    employeeSubdivision: 'Subdivisión',
+    employeeActive: 'Activo',
+    errUpdateEmployee: 'No se pudo actualizar el empleado',
+    errDeleteEmployee: 'No se pudo eliminar el empleado',
     projectFilter: 'Filtrar proyecto',
     allProjects: 'Todos los proyectos'
   },
@@ -142,6 +153,15 @@ const I18N: Record<Lang, any> = {
     taskOptions: 'Options',
     editTask: 'Edit',
     deleteTask: 'Delete',
+    employeeOptions: 'Employee options',
+    editEmployee: 'Edit employee',
+    deleteEmployee: 'Delete employee',
+    updateEmployee: 'Update employee',
+    employeeCountry: 'Country',
+    employeeSubdivision: 'Subdivision',
+    employeeActive: 'Active',
+    errUpdateEmployee: 'Could not update employee',
+    errDeleteEmployee: 'Could not delete employee',
     projectFilter: 'Project filter',
     allProjects: 'All projects'
   },
@@ -203,6 +223,15 @@ const I18N: Record<Lang, any> = {
     taskOptions: 'Optionen',
     editTask: 'Bearbeiten',
     deleteTask: 'Löschen',
+    employeeOptions: 'Mitarbeiteroptionen',
+    editEmployee: 'Mitarbeiter bearbeiten',
+    deleteEmployee: 'Mitarbeiter löschen',
+    updateEmployee: 'Mitarbeiter aktualisieren',
+    employeeCountry: 'Land',
+    employeeSubdivision: 'Bundesland',
+    employeeActive: 'Aktiv',
+    errUpdateEmployee: 'Mitarbeiter konnte nicht aktualisiert werden',
+    errDeleteEmployee: 'Mitarbeiter konnte nicht gelöscht werden',
     projectFilter: 'Projektfilter',
     allProjects: 'Alle Projekte'
   }
@@ -297,7 +326,7 @@ function buildTaskSegments(task: any, timelineStart: Date, dayWidth: number) {
   return segments;
 }
 
-export function Timeline({ employees, departments, projects, tasks, startDate, onCreateDepartment, onCreateEmployee, onCreateTask, onUpdateTask, onDeleteTask, onCreateProject }: Props) {
+export function Timeline({ employees, departments, projects, tasks, startDate, onCreateDepartment, onCreateEmployee, onUpdateEmployee, onDeleteEmployee, onCreateTask, onUpdateTask, onDeleteTask, onCreateProject }: Props) {
   const getEmployeeNextFreeDate = (employeeId: string) => {
     const today = nextWorkingDay(new Date());
     if (!employeeId) return toISODate(today);
@@ -343,12 +372,13 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
   const [creationModal, setCreationModal] = useState<'department' | 'employee' | 'task' | 'project' | null>(null);
   const [editTaskId, setEditTaskId] = useState<string | null>(null);
   const [showTaskOptions, setShowTaskOptions] = useState(false);
+  const [showEmployeeOptions, setShowEmployeeOptions] = useState(false);
   const [rangeOffsetDays, setRangeOffsetDays] = useState(0);
   const [formError, setFormError] = useState('');
 
   const [newDepartment, setNewDepartment] = useState({ name: '', code: '' });
   const [newEmployee, setNewEmployee] = useState({
-    employeeName: '', departmentId: '', role: '', hourlyCost: 20, weeklyCapacityHours: 40, workLocationCountryCode: 'CO', workLocationSubdivisionCode: ''
+    employeeName: '', departmentId: '', role: '', hourlyCost: 20, weeklyCapacityHours: 40, workLocationCountryCode: 'CO', workLocationSubdivisionCode: '', active: true
   });
   const [newTask, setNewTask] = useState({
     ...buildInitialTaskState(),
@@ -389,6 +419,8 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     setFormError('');
     if (type === 'department') setNewDepartment({ name: '', code: '' });
     if (type === 'employee') {
+      setEmployeeModal(null);
+      setShowEmployeeOptions(false);
       setNewEmployee({
         employeeName: '',
         departmentId: departments.length === 1 ? departments[0].id : '',
@@ -396,7 +428,8 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
         hourlyCost: 20,
         weeklyCapacityHours: 40,
         workLocationCountryCode: 'CO',
-        workLocationSubdivisionCode: ''
+        workLocationSubdivisionCode: '',
+        active: true
       });
     }
     if (type === 'project') setNewProject({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED' });
@@ -433,11 +466,16 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     e.preventDefault();
     try {
       setFormError('');
-      await onCreateEmployee(newEmployee);
-      setNewEmployee({ employeeName: '', departmentId: '', role: '', hourlyCost: 20, weeklyCapacityHours: 40, workLocationCountryCode: 'CO', workLocationSubdivisionCode: '' });
+      if (employeeModal) {
+        await onUpdateEmployee(employeeModal.employeeId, newEmployee);
+      } else {
+        await onCreateEmployee(newEmployee);
+      }
+      setNewEmployee({ employeeName: '', departmentId: '', role: '', hourlyCost: 20, weeklyCapacityHours: 40, workLocationCountryCode: 'CO', workLocationSubdivisionCode: '', active: true });
+      if (employeeModal) setEmployeeModal((prev: any) => (prev ? { ...prev, ...newEmployee } : prev));
       closeCreationModal();
     } catch (err: any) {
-      setFormError(err?.message || t.errEmployee);
+      setFormError(err?.message || (employeeModal ? t.errUpdateEmployee : t.errEmployee));
     }
   };
 
@@ -467,6 +505,34 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     } catch (err: any) {
       setFormError(err?.message || t.errDeleteTask);
     }
+  };
+
+  const deleteEmployee = async (employeeId: string) => {
+    try {
+      setFormError('');
+      await onDeleteEmployee(employeeId);
+      setEmployeeModal(null);
+      setShowEmployeeOptions(false);
+    } catch (err: any) {
+      setFormError(err?.message || t.errDeleteEmployee);
+    }
+  };
+
+  const openEmployeeEditor = () => {
+    if (!employeeModal) return;
+    setFormError('');
+    setShowEmployeeOptions(false);
+    setCreationModal('employee');
+    setNewEmployee({
+      employeeName: employeeModal.employeeName || '',
+      departmentId: employeeModal.departmentId || '',
+      role: employeeModal.role || '',
+      hourlyCost: Number(employeeModal.hourlyCost) || 20,
+      weeklyCapacityHours: Number(employeeModal.weeklyCapacityHours) || 40,
+      workLocationCountryCode: employeeModal.workLocationCountryCode || 'CO',
+      workLocationSubdivisionCode: employeeModal.workLocationSubdivisionCode || '',
+      active: employeeModal.active ?? true
+    });
   };
 
   const getTaskEndDate = (task: any) => {
@@ -628,7 +694,23 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
         </div>
       </div>
     </Modal>}
-    {employeeModal && <Modal onClose={() => setEmployeeModal(null)} title={employeeModal.employeeName}><p className="text-slate-700">{t.employeeRole}: {employeeModal.role}</p><p className="text-slate-700">{t.employeeCost}: {employeeModal.hourlyCost}</p><p className="text-slate-700">{t.employeeCapacity}: {employeeModal.weeklyCapacityHours}{t.hours}</p><button type="button" onClick={() => { setEmployeeModal(null); openTaskCreationPrefill({ employeeId: employeeModal.employeeId }); }} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700">{t.addTaskToEmployee}</button></Modal>}
+    {employeeModal && <Modal onClose={() => { setEmployeeModal(null); setShowEmployeeOptions(false); }} title={employeeModal.employeeName}>
+      {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
+      <div className="relative flex justify-end">
+        <button type="button" className="rounded-md border border-slate-200 px-2 py-1" onClick={() => setShowEmployeeOptions((v) => !v)} aria-label={t.employeeOptions}>⋯</button>
+        {showEmployeeOptions && <div className="absolute top-10 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-md">
+          <button type="button" className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100" onClick={openEmployeeEditor}>{t.editEmployee}</button>
+          <button type="button" className="block w-full rounded px-2 py-1 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => deleteEmployee(employeeModal.employeeId)}>{t.deleteEmployee}</button>
+        </div>}
+      </div>
+      <p className="text-slate-700">{t.employeeRole}: {employeeModal.role}</p>
+      <p className="text-slate-700">{t.employeeCost}: {employeeModal.hourlyCost}</p>
+      <p className="text-slate-700">{t.employeeCapacity}: {employeeModal.weeklyCapacityHours}{t.hours}</p>
+      <p className="text-slate-700">{t.employeeCountry}: {employeeModal.workLocationCountryCode || '-'}</p>
+      <p className="text-slate-700">{t.employeeSubdivision}: {employeeModal.workLocationSubdivisionCode || '-'}</p>
+      <p className="text-slate-700">{t.employeeActive}: {employeeModal.active ? 'Sí' : 'No'}</p>
+      <button type="button" onClick={() => { setEmployeeModal(null); setShowEmployeeOptions(false); openTaskCreationPrefill({ employeeId: employeeModal.employeeId }); }} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700">{t.addTaskToEmployee}</button>
+    </Modal>}
 
     {creationModal === 'department' && (
       <Modal onClose={closeCreationModal} title={t.createDepartment}>
@@ -642,7 +724,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     )}
 
     {creationModal === 'employee' && (
-      <Modal onClose={closeCreationModal} title={t.createEmployee}>
+      <Modal onClose={closeCreationModal} title={employeeModal ? t.editEmployee : t.createEmployee}>
         {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
         <form className="space-y-3 mt-3" onSubmit={submitEmployee}>
           <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.name} value={newEmployee.employeeName} onChange={(e) => setNewEmployee((v) => ({ ...v, employeeName: e.target.value }))} required />
@@ -651,7 +733,21 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
             {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
           <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.role} value={newEmployee.role} onChange={(e) => setNewEmployee((v) => ({ ...v, role: e.target.value }))} required />
-          <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{t.saveEmployee}</button>
+          <label className="space-y-1 text-sm text-slate-700">
+            <span>{t.employeeCost}</span>
+            <input className="w-full rounded-lg border border-slate-200 p-3" type="number" min={0} step="0.01" value={newEmployee.hourlyCost} onChange={(e) => setNewEmployee((v) => ({ ...v, hourlyCost: Number(e.target.value) || 0 }))} required />
+          </label>
+          <label className="space-y-1 text-sm text-slate-700">
+            <span>{t.employeeCapacity}</span>
+            <input className="w-full rounded-lg border border-slate-200 p-3" type="number" min={1} value={newEmployee.weeklyCapacityHours} onChange={(e) => setNewEmployee((v) => ({ ...v, weeklyCapacityHours: Math.max(1, Number(e.target.value) || 1) }))} required />
+          </label>
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.employeeCountry} value={newEmployee.workLocationCountryCode} onChange={(e) => setNewEmployee((v) => ({ ...v, workLocationCountryCode: e.target.value.toUpperCase() }))} required />
+          <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.employeeSubdivision} value={newEmployee.workLocationSubdivisionCode || ''} onChange={(e) => setNewEmployee((v) => ({ ...v, workLocationSubdivisionCode: e.target.value.toUpperCase() }))} />
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+            <input type="checkbox" checked={newEmployee.active} onChange={(e) => setNewEmployee((v) => ({ ...v, active: e.target.checked }))} />
+            <span>{t.employeeActive}</span>
+          </label>
+          <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{employeeModal ? t.updateEmployee : t.saveEmployee}</button>
         </form>
       </Modal>
     )}
