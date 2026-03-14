@@ -15,6 +15,8 @@ type Props = {
   onCreateDepartment: (data: { name: string; code: string }) => Promise<void>;
   onCreateEmployee: (data: any) => Promise<void>;
   onCreateTask: (data: any) => Promise<void>;
+  onUpdateTask: (taskId: string, data: any) => Promise<void>;
+  onDeleteTask: (taskId: string) => Promise<void>;
   onCreateProject: (data: any) => Promise<void>;
 };
 
@@ -52,6 +54,7 @@ const I18N: Record<Lang, any> = {
     saveDepartment: 'Crear departamento',
     saveEmployee: 'Crear empleado',
     saveTask: 'Crear paquete',
+    updateTask: 'Actualizar paquete',
     saveProject: 'Crear proyecto',
     taskProject: 'Proyecto',
     taskPriority: 'Prioridad',
@@ -67,8 +70,16 @@ const I18N: Record<Lang, any> = {
     errEmployee: 'No se pudo crear el empleado',
     errTask: 'No se pudo crear el paquete de trabajo',
     errProject: 'No se pudo crear el proyecto',
+    errUpdateTask: 'No se pudo actualizar el paquete de trabajo',
+    errDeleteTask: 'No se pudo eliminar el paquete de trabajo',
     disabledEmployee: 'Necesitas al menos un departamento',
-    disabledTask: 'Necesitas al menos un empleado y un proyecto'
+    disabledTask: 'Necesitas al menos un empleado y un proyecto',
+    addTaskToEmployee: 'Añadir paquete a este trabajador',
+    taskOptions: 'Opciones',
+    editTask: 'Editar',
+    deleteTask: 'Eliminar',
+    projectFilter: 'Filtrar proyecto',
+    allProjects: 'Todos los proyectos'
   },
   en: {
     title: 'Resource View (MVP)',
@@ -101,6 +112,7 @@ const I18N: Record<Lang, any> = {
     saveDepartment: 'Create department',
     saveEmployee: 'Create employee',
     saveTask: 'Create package',
+    updateTask: 'Update package',
     saveProject: 'Create project',
     taskProject: 'Project',
     taskPriority: 'Priority',
@@ -116,8 +128,16 @@ const I18N: Record<Lang, any> = {
     errEmployee: 'Could not create employee',
     errTask: 'Could not create work package',
     errProject: 'Could not create project',
+    errUpdateTask: 'Could not update work package',
+    errDeleteTask: 'Could not delete work package',
     disabledEmployee: 'You need at least one department',
-    disabledTask: 'You need at least one employee and one project'
+    disabledTask: 'You need at least one employee and one project',
+    addTaskToEmployee: 'Add package to this employee',
+    taskOptions: 'Options',
+    editTask: 'Edit',
+    deleteTask: 'Delete',
+    projectFilter: 'Project filter',
+    allProjects: 'All projects'
   },
   de: {
     title: 'Ressourcenansicht (MVP)',
@@ -150,6 +170,7 @@ const I18N: Record<Lang, any> = {
     saveDepartment: 'Abteilung erstellen',
     saveEmployee: 'Mitarbeiter erstellen',
     saveTask: 'Paket erstellen',
+    updateTask: 'Paket aktualisieren',
     saveProject: 'Projekt erstellen',
     taskProject: 'Projekt',
     taskPriority: 'Priorität',
@@ -165,8 +186,16 @@ const I18N: Record<Lang, any> = {
     errEmployee: 'Mitarbeiter konnte nicht erstellt werden',
     errTask: 'Arbeitspaket konnte nicht erstellt werden',
     errProject: 'Projekt konnte nicht erstellt werden',
+    errUpdateTask: 'Arbeitspaket konnte nicht aktualisiert werden',
+    errDeleteTask: 'Arbeitspaket konnte nicht gelöscht werden',
     disabledEmployee: 'Mindestens eine Abteilung erforderlich',
-    disabledTask: 'Mindestens ein Mitarbeiter und ein Projekt erforderlich'
+    disabledTask: 'Mindestens ein Mitarbeiter und ein Projekt erforderlich',
+    addTaskToEmployee: 'Paket zu diesem Mitarbeiter hinzufügen',
+    taskOptions: 'Optionen',
+    editTask: 'Bearbeiten',
+    deleteTask: 'Löschen',
+    projectFilter: 'Projektfilter',
+    allProjects: 'Alle Projekte'
   }
 };
 
@@ -257,7 +286,7 @@ function buildTaskSegments(task: any, timelineStart: Date, dayWidth: number) {
   return segments;
 }
 
-export function Timeline({ employees, departments, projects, tasks, startDate, onCreateDepartment, onCreateEmployee, onCreateTask, onCreateProject }: Props) {
+export function Timeline({ employees, departments, projects, tasks, startDate, onCreateDepartment, onCreateEmployee, onCreateTask, onUpdateTask, onDeleteTask, onCreateProject }: Props) {
   const getEmployeeNextFreeDate = (employeeId: string) => {
     const today = nextWorkingDay(new Date());
     if (!employeeId) return toISODate(today);
@@ -272,17 +301,18 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     return toISODate(nextWorkingDay(furthestEnd > today ? furthestEnd : today));
   };
 
-  const buildInitialTaskState = (employeeId?: string) => {
+  const buildInitialTaskState = (prefill: { employeeId?: string; startDate?: string; projectId?: string } = {}) => {
     const hasSingleEmployee = employees.length === 1;
     const hasSingleProject = projects.length === 1;
-    const selectedEmployeeId = employeeId || (hasSingleEmployee ? employees[0].employeeId : '');
+    const selectedEmployeeId = prefill.employeeId || (hasSingleEmployee ? employees[0].employeeId : '');
     const employee = employees.find((x) => x.employeeId === selectedEmployeeId);
-    const earliestStartDate = getEmployeeNextFreeDate(selectedEmployeeId);
+    const seededStart = prefill.startDate ? toISODate(nextWorkingDay(parseISO(prefill.startDate))) : undefined;
+    const earliestStartDate = seededStart || getEmployeeNextFreeDate(selectedEmployeeId);
 
     return {
       departmentId: employee?.departmentId || '',
       employeeId: selectedEmployeeId,
-      projectId: hasSingleProject ? projects[0].id : '',
+      projectId: prefill.projectId || (hasSingleProject ? projects[0].id : ''),
       title: '',
       description: '',
       earliestStartDate,
@@ -295,10 +325,13 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
 
   const [language, setLanguage] = useState<Lang>('es');
   const [department, setDepartment] = useState('all');
+  const [projectFilter, setProjectFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [taskModal, setTaskModal] = useState<any>(null);
   const [employeeModal, setEmployeeModal] = useState<any>(null);
   const [creationModal, setCreationModal] = useState<'department' | 'employee' | 'task' | 'project' | null>(null);
+  const [editTaskId, setEditTaskId] = useState<string | null>(null);
+  const [showTaskOptions, setShowTaskOptions] = useState(false);
   const [rangeOffsetDays, setRangeOffsetDays] = useState(0);
   const [formError, setFormError] = useState('');
 
@@ -323,14 +356,16 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
   const canCreateEmployee = departments.length > 0;
   const canCreateTask = employees.length > 0 && projects.length > 0;
 
+  const filteredTasks = useMemo(() => tasks.filter((task) => (projectFilter === 'all' ? true : task.projectId === projectFilter)), [tasks, projectFilter]);
+
   const filteredEmployees = useMemo(() => employees.filter((e) => {
     if (department !== 'all' && e.departmentId !== department) return false;
     if (!query) return true;
     const q = normalize(query);
-    const ownTasks = tasks.filter((x) => x.employeeId === e.employeeId);
+    const ownTasks = filteredTasks.filter((x) => x.employeeId === e.employeeId);
     const hay = normalize(`${e.employeeName} ${ownTasks.map((x: any) => `${x.title} ${x.description} ${x.project?.projectName || ''}`).join(' ')}`);
     return hay.includes(q);
-  }), [department, employees, query, tasks]);
+  }), [department, employees, filteredTasks, query]);
 
   const grouped = departments.map((d) => ({ ...d, employees: filteredEmployees.filter((e) => e.departmentId === d.id) })).filter((d) => d.employees.length);
 
@@ -354,8 +389,21 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       });
     }
     if (type === 'project') setNewProject({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED' });
-    if (type === 'task') setNewTask(buildInitialTaskState());
+    if (type === 'task') {
+      setEditTaskId(null);
+      setNewTask(buildInitialTaskState({ projectId: projectFilter !== 'all' ? projectFilter : undefined }));
+    }
     setCreationModal(type);
+  };
+
+  const openTaskCreationPrefill = (prefill: { employeeId?: string; startDate?: string }) => {
+    setFormError('');
+    setEditTaskId(null);
+    setNewTask(buildInitialTaskState({
+      ...prefill,
+      projectId: projectFilter !== 'all' ? projectFilter : undefined
+    }));
+    setCreationModal('task');
   };
 
   const submitDepartment = async (e: FormEvent) => {
@@ -386,12 +434,34 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     e.preventDefault();
     try {
       setFormError('');
-      await onCreateTask({ ...newTask, durationDays: Number(newTask.durationDays) });
+      if (editTaskId) {
+        await onUpdateTask(editTaskId, { ...newTask, durationDays: Number(newTask.durationDays) });
+      } else {
+        await onCreateTask({ ...newTask, durationDays: Number(newTask.durationDays) });
+      }
       setNewTask(buildInitialTaskState());
+      setEditTaskId(null);
       closeCreationModal();
     } catch (err: any) {
-      setFormError(err?.message || t.errTask);
+      setFormError(err?.message || (editTaskId ? t.errUpdateTask : t.errTask));
     }
+  };
+
+  const deleteTask = async (taskId: string) => {
+    try {
+      setFormError('');
+      await onDeleteTask(taskId);
+      setTaskModal(null);
+      setShowTaskOptions(false);
+    } catch (err: any) {
+      setFormError(err?.message || t.errDeleteTask);
+    }
+  };
+
+  const getTaskEndDate = (task: any) => {
+    if (task.deadlineDate) return String(task.deadlineDate).slice(0, 10);
+    if (task.scheduledEndDateExclusive) return format(subDays(parseISO(String(task.scheduledEndDateExclusive).slice(0, 10)), 1), 'yyyy-MM-dd');
+    return '';
   };
 
   const submitProject = async (e: FormEvent) => {
@@ -450,7 +520,11 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm transition hover:bg-slate-50" onClick={() => setRangeOffsetDays(0)}>{t.today}</button>
     </div>
 
-    <div className="flex flex-wrap gap-2">{projects.map((p) => <span key={p.id} className="px-2 py-1 rounded text-white text-xs" style={{ background: p.colorHex }}>{p.projectName}</span>)}</div>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-sm text-slate-600">{t.projectFilter}:</span>
+      <button type="button" onClick={() => setProjectFilter('all')} className={`rounded px-2 py-1 text-xs ${projectFilter === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}>{t.allProjects}</button>
+      {projects.map((p) => <button type="button" key={p.id} onClick={() => setProjectFilter(p.id)} className={`rounded px-2 py-1 text-xs ${projectFilter === p.id ? 'text-white ring-2 ring-offset-1 ring-slate-400' : 'text-white opacity-80'}`} style={{ background: p.colorHex }}>{p.projectName}</button>)}
+    </div>
 
     <div className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="sticky top-0 z-20 bg-white border-b">
@@ -472,8 +546,8 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       {grouped.map((dep) => <div key={dep.id}><div className="sticky left-0 box-border z-10 shrink-0 border-b bg-slate-100 p-2 font-semibold" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{dep.name}</div>
         {dep.employees.map((e: any) => <div key={e.employeeId} className="relative flex border-b h-[52px]">
           <button onClick={() => setEmployeeModal(e)} className="sticky left-0 z-10 box-border shrink-0 border-r bg-white px-2 text-left" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{e.employeeName}</button>
-          <div className="relative flex min-w-max">{dates.map((d) => <div key={d.toISOString()} style={{ width: dayW }} className={`${isWeekend(d) ? 'bg-slate-100' : ''} shrink-0 border-r`} />)}</div>
-          {tasks.filter((x) => x.employeeId === e.employeeId).map((task: any) => {
+          <div className="relative flex min-w-max">{dates.map((d) => <button type="button" key={d.toISOString()} onClick={() => openTaskCreationPrefill({ employeeId: e.employeeId, startDate: toDateKey(d) })} style={{ width: dayW }} className={`${isWeekend(d) ? 'bg-slate-100' : 'bg-white'} shrink-0 border-r transition hover:bg-blue-50`} />)}</div>
+          {filteredTasks.filter((x) => x.employeeId === e.employeeId).map((task: any) => {
             const segments = buildTaskSegments(task, start, dayW);
             return segments.map((segment, index) => (
               <button key={`${task.id}-${segment.left}-${index}`} onClick={() => setTaskModal(task)} className="absolute top-2 h-8 overflow-hidden rounded px-2 text-left text-xs text-white" style={{ left: leftColumnWidth + segment.left, width: segment.width, background: task.project?.colorHex || '#334155' }}>{task.title} · {task.project?.projectName}</button>
@@ -483,8 +557,40 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       </div>)}
     </div>
 
-    {taskModal && <Modal onClose={() => setTaskModal(null)} title={taskModal.title}><p className="text-slate-700">{t.taskProject}: {taskModal.project?.projectName}</p><p className="text-slate-700">{t.taskPriority}: {taskModal.priority}</p><p className="text-slate-700">{t.taskDuration}: {taskModal.durationDays} {t.days}</p><p className="text-slate-700">{t.taskStart}: {String(taskModal.scheduledStartDate).slice(0, 10)}</p></Modal>}
-    {employeeModal && <Modal onClose={() => setEmployeeModal(null)} title={employeeModal.employeeName}><p className="text-slate-700">{t.employeeRole}: {employeeModal.role}</p><p className="text-slate-700">{t.employeeCost}: {employeeModal.hourlyCost}</p><p className="text-slate-700">{t.employeeCapacity}: {employeeModal.weeklyCapacityHours}{t.hours}</p></Modal>}
+    {taskModal && <Modal onClose={() => { setTaskModal(null); setShowTaskOptions(false); }} title={taskModal.title}>
+      {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
+      <div className="relative flex justify-end">
+        <button type="button" className="rounded-md border border-slate-200 px-2 py-1" onClick={() => setShowTaskOptions((v) => !v)} aria-label={t.taskOptions}>⋯</button>
+        {showTaskOptions && <div className="absolute top-10 w-36 rounded-lg border border-slate-200 bg-white p-1 shadow-md">
+          <button type="button" className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100" onClick={() => {
+            setNewTask({
+              departmentId: taskModal.departmentId,
+              employeeId: taskModal.employeeId,
+              projectId: taskModal.projectId,
+              title: taskModal.title,
+              description: taskModal.description,
+              earliestStartDate: String(taskModal.earliestStartDate || taskModal.scheduledStartDate).slice(0, 10),
+              deadlineDate: String(taskModal.deadlineDate || getTaskEndDate(taskModal)).slice(0, 10),
+              durationDays: taskModal.durationDays,
+              priority: taskModal.priority,
+              status: taskModal.status
+            });
+            setEditTaskId(taskModal.id);
+            setTaskModal(null);
+            setShowTaskOptions(false);
+            setCreationModal('task');
+          }}>{t.editTask}</button>
+          <button type="button" className="block w-full rounded px-2 py-1 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => deleteTask(taskModal.id)}>{t.deleteTask}</button>
+        </div>}
+      </div>
+      <p className="text-slate-700">{t.description}: {taskModal.description}</p>
+      <p className="text-slate-700">{t.taskProject}: {taskModal.project?.projectName}</p>
+      <p className="text-slate-700">{t.taskPriority}: {taskModal.priority}</p>
+      <p className="text-slate-700">{t.taskDuration}: {taskModal.durationDays} {t.days}</p>
+      <p className="text-slate-700">{t.taskStart}: {String(taskModal.scheduledStartDate).slice(0, 10)}</p>
+      <p className="text-slate-700">{t.taskEnd}: {getTaskEndDate(taskModal)}</p>
+    </Modal>}
+    {employeeModal && <Modal onClose={() => setEmployeeModal(null)} title={employeeModal.employeeName}><p className="text-slate-700">{t.employeeRole}: {employeeModal.role}</p><p className="text-slate-700">{t.employeeCost}: {employeeModal.hourlyCost}</p><p className="text-slate-700">{t.employeeCapacity}: {employeeModal.weeklyCapacityHours}{t.hours}</p><button type="button" onClick={() => { setEmployeeModal(null); openTaskCreationPrefill({ employeeId: employeeModal.employeeId }); }} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700">{t.addTaskToEmployee}</button></Modal>}
 
     {creationModal === 'department' && (
       <Modal onClose={closeCreationModal} title={t.createDepartment}>
@@ -594,7 +700,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
               />
             </label>
           </div>
-          <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{t.saveTask}</button>
+          <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{editTaskId ? t.updateTask : t.saveTask}</button>
         </form>
       </Modal>
     )}

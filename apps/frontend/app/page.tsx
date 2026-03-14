@@ -32,6 +32,16 @@ export default function Page() {
     onSuccess: refreshAll
   });
 
+  const updateTask = useMutation({
+    mutationFn: ({ taskId, data }: { taskId: string; data: any }) => api(`/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: refreshAll
+  });
+
+  const deleteTask = useMutation({
+    mutationFn: (taskId: string) => api(`/tasks/${taskId}`, { method: 'DELETE' }),
+    onSuccess: refreshAll
+  });
+
   const createProject = useMutation({
     mutationFn: (data: any) => api('/projects', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: refreshAll
@@ -49,6 +59,8 @@ export default function Page() {
     onCreateDepartment={(data) => createDepartment.mutateAsync(data).then(() => undefined)}
     onCreateEmployee={(data) => createEmployee.mutateAsync(data).then(() => undefined)}
     onCreateTask={(data) => createTask.mutateAsync(data).then(() => undefined)}
+    onUpdateTask={(taskId, data) => updateTask.mutateAsync({ taskId, data }).then(() => undefined)}
+    onDeleteTask={(taskId) => deleteTask.mutateAsync(taskId).then(() => undefined)}
     onCreateProject={(data) => createProject.mutateAsync(data).then(() => undefined)}
   />;
 }
