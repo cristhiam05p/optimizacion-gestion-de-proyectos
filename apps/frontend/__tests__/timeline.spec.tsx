@@ -17,6 +17,7 @@ const renderTimeline = () => render(
     onCreateDepartment={async () => undefined}
     onCreateEmployee={async () => undefined}
     onCreateTask={async () => undefined}
+    onCreateProject={async () => undefined}
   />
 );
 
@@ -49,5 +50,18 @@ describe('timeline', () => {
     expect(screen.getByText('Mes siguiente →')).toBeInTheDocument();
     expect(screen.getByText('← Mes anterior')).toBeInTheDocument();
     expect(screen.getByText('Hoy')).toBeInTheDocument();
+  });
+
+  it('opens create department modal from button', () => {
+    renderTimeline();
+    fireEvent.click(screen.getByText('Crear nuevo departamento'));
+    expect(screen.getByRole('button', { name: 'Crear departamento' })).toBeInTheDocument();
+  });
+
+  it('language switch updates labels and date headers', () => {
+    renderTimeline();
+    fireEvent.change(screen.getByDisplayValue('Español'), { target: { value: 'en' } });
+    expect(screen.getByText('Create new department')).toBeInTheDocument();
+    expect(screen.getAllByText(/Wk/).length).toBeGreaterThan(0);
   });
 });

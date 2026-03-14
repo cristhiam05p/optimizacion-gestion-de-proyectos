@@ -13,6 +13,7 @@ export default function Page() {
   const refreshAll = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['departments'] }),
     queryClient.invalidateQueries({ queryKey: ['employees'] }),
+    queryClient.invalidateQueries({ queryKey: ['projects'] }),
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
   ]);
 
@@ -31,6 +32,11 @@ export default function Page() {
     onSuccess: refreshAll
   });
 
+  const createProject = useMutation({
+    mutationFn: (data: any) => api('/projects', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: refreshAll
+  });
+
   if ([departments, employees, projects, tasks].some((q) => q.isLoading)) return <main className="p-6">Loading...</main>;
   if ([departments, employees, projects, tasks].some((q) => q.error)) return <main className="p-6">Error loading data</main>;
 
@@ -43,5 +49,6 @@ export default function Page() {
     onCreateDepartment={(data) => createDepartment.mutateAsync(data).then(() => undefined)}
     onCreateEmployee={(data) => createEmployee.mutateAsync(data).then(() => undefined)}
     onCreateTask={(data) => createTask.mutateAsync(data).then(() => undefined)}
+    onCreateProject={(data) => createProject.mutateAsync(data).then(() => undefined)}
   />;
 }
