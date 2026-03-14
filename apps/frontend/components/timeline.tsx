@@ -257,7 +257,9 @@ function isBlockedDay(date: Date, holidaySet: Set<string>) {
 
 function buildTaskSegments(task: any, timelineStart: Date, dayWidth: number) {
   const taskStart = parseISO(String(task.scheduledStartDate).slice(0, 10));
-  const taskEndExclusive = parseISO(String(task.scheduledEndDateExclusive).slice(0, 10));
+  const durationDays = Math.max(1, Number(task.durationDays) || 1);
+  const computedEndInclusive = parseISO(addWorkingDaysFrom(toISODate(taskStart), durationDays));
+  const taskEndExclusive = addDays(computedEndInclusive, 1);
 
   if (taskEndExclusive <= taskStart) {
     return [{ left: differenceInCalendarDays(taskStart, timelineStart) * dayWidth, width: dayWidth }];

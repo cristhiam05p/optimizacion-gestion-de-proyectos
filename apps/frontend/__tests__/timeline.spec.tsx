@@ -72,6 +72,29 @@ describe('timeline', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Proyecto' }));
     expect(screen.queryByText(/Otra · Otro/)).not.toBeInTheDocument();
   });
+
+
+  it('renders task bar width from working duration instead of stale exclusive end date', () => {
+    render(
+      <Timeline
+        departments={departments}
+        employees={employees}
+        projects={projects}
+        tasks={[{ ...tasks[0], id: 't-width', durationDays: 2, scheduledEndDateExclusive: '2026-01-25' }]}
+        startDate="2026-01-01"
+        onCreateDepartment={async () => undefined}
+        onCreateEmployee={async () => undefined}
+        onCreateTask={async () => undefined}
+        onUpdateTask={async () => undefined}
+        onDeleteTask={async () => undefined}
+        onCreateProject={async () => undefined}
+      />
+    );
+
+    const taskBar = screen.getByRole('button', { name: /Tarea · Proyecto/ });
+    expect(taskBar).toHaveStyle({ width: '84px' });
+  });
+
   it('non-working day highlight', () => {
     renderTimeline();
     expect(document.querySelectorAll('.bg-slate-100').length).toBeGreaterThan(0);
