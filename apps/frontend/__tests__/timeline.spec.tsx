@@ -17,6 +17,8 @@ const renderTimeline = () => render(
     onCreateDepartment={async () => undefined}
     onCreateEmployee={async () => undefined}
     onCreateTask={async () => undefined}
+    onUpdateTask={async () => undefined}
+    onDeleteTask={async () => undefined}
     onCreateProject={async () => undefined}
   />
 );
@@ -40,6 +42,34 @@ describe('timeline', () => {
     renderTimeline();
     fireEvent.click(screen.getByRole('button', { name: 'José' }));
     expect(screen.getByText('Rol: Dev')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Añadir paquete a este trabajador' })).toBeInTheDocument();
+  });
+
+  it('task modal shows title, description and end date', () => {
+    renderTimeline();
+    fireEvent.click(screen.getByText(/Tarea/));
+    expect(screen.getByText('Descripción: Descripción')).toBeInTheDocument();
+    expect(screen.getByText(/Fin:/)).toBeInTheDocument();
+  });
+
+  it('project filter hides tasks from other projects', () => {
+    render(
+      <Timeline
+        departments={departments}
+        employees={employees}
+        projects={[projects[0], { id: 'p2', projectName: 'Otro', colorHex: '#333' }]}
+        tasks={[...tasks, { ...tasks[0], id: 't2', title: 'Otra', projectId: 'p2', project: { id: 'p2', projectName: 'Otro', colorHex: '#333' } }]}
+        startDate="2026-01-01"
+        onCreateDepartment={async () => undefined}
+        onCreateEmployee={async () => undefined}
+        onCreateTask={async () => undefined}
+        onUpdateTask={async () => undefined}
+        onDeleteTask={async () => undefined}
+        onCreateProject={async () => undefined}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Proyecto' }));
+    expect(screen.queryByText(/Otra · Otro/)).not.toBeInTheDocument();
   });
   it('non-working day highlight', () => {
     renderTimeline();
