@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { FormEvent, useMemo, useState } from 'react';
-import { addDays, differenceInCalendarDays, eachDayOfInterval, format, getISOWeek, isWeekend, parseISO, subDays } from 'date-fns';
+import { addDays, differenceInCalendarDays, eachDayOfInterval, format, getISOWeek, isWeekend, parseISO, startOfDay, subDays } from 'date-fns';
 import type { Locale } from 'date-fns';
 import { de, enUS, es } from 'date-fns/locale';
 import { normalize } from '../lib/api';
@@ -213,11 +213,11 @@ const DATE_LOCALE: Record<Lang, Locale> = { es, en: enUS, de };
 const DEFAULT_TASK_DURATION_DAYS = 5;
 
 function toISODate(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return format(date, 'yyyy-MM-dd');
 }
 
 function nextWorkingDay(date: Date) {
-  const current = new Date(date);
+  const current = startOfDay(date);
   while (isWeekend(current)) current.setDate(current.getDate() + 1);
   return current;
 }
@@ -303,7 +303,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     if (!employeeTasks.length) return toISODate(today);
 
     const furthestEnd = employeeTasks.reduce((latest, task) => {
-      const endDate = parseISO(task.scheduledEndDateExclusive);
+      const endDate = parseISO(String(task.scheduledEndDateExclusive).slice(0, 10));
       return endDate > latest ? endDate : latest;
     }, today);
 

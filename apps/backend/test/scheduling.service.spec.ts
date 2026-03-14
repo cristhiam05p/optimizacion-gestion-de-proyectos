@@ -11,6 +11,12 @@ describe('SchedulingService', () => {
     expect(result.getDay()).not.toBe(6);
   });
 
+  it('findEarliestFeasibleStart keeps duration in working days only', () => {
+    const scheduled = service.findEarliestFeasibleStart(new Date('2026-03-19'), [], 3, 'DE', 'BW', []);
+    expect(scheduled.start.toISOString().slice(0, 10)).toBe('2026-03-19');
+    expect(scheduled.endExclusive.toISOString().slice(0, 10)).toBe('2026-03-24');
+  });
+
   it('detects collisions', () => {
     const col = service.detectTaskCollisions({ employeeId: 'e1', scheduledStartDate: new Date('2026-01-10'), scheduledEndDateExclusive: new Date('2026-01-13') }, [{ id: 'a', employeeId: 'e1', scheduledStartDate: new Date('2026-01-11'), scheduledEndDateExclusive: new Date('2026-01-12') } as any]);
     expect(col).toHaveLength(1);
