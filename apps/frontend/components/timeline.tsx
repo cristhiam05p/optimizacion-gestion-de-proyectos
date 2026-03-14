@@ -2,6 +2,7 @@
 import React from 'react';
 import { FormEvent, useMemo, useState } from 'react';
 import { addDays, differenceInCalendarDays, eachDayOfInterval, format, getISOWeek, isWeekend, parseISO } from 'date-fns';
+import type { Locale } from 'date-fns';
 import { de, enUS, es } from 'date-fns/locale';
 import { normalize } from '../lib/api';
 
