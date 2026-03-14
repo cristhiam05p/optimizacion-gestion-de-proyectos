@@ -213,7 +213,7 @@ const DATE_LOCALE: Record<Lang, Locale> = { es, en: enUS, de };
 const DEFAULT_TASK_DURATION_DAYS = 5;
 
 function toISODate(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return format(date, 'yyyy-MM-dd');
 }
 
 function nextWorkingDay(date: Date) {
@@ -303,7 +303,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     if (!employeeTasks.length) return toISODate(today);
 
     const furthestEnd = employeeTasks.reduce((latest, task) => {
-      const endDate = parseISO(task.scheduledEndDateExclusive);
+      const endDate = parseISO(String(task.scheduledEndDateExclusive).slice(0, 10));
       return endDate > latest ? endDate : latest;
     }, today);
 

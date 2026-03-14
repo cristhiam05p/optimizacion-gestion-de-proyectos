@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Timeline } from '../components/timeline';
 import { api } from '../lib/api';
+import { format } from 'date-fns';
 
 export default function Page() {
   const queryClient = useQueryClient();
@@ -55,7 +56,7 @@ export default function Page() {
     employees={employees.data!}
     projects={projects.data!}
     tasks={tasks.data!}
-    startDate={new Date().toISOString().slice(0, 10)}
+    startDate={format(new Date(), 'yyyy-MM-dd')}
     onCreateDepartment={(data) => createDepartment.mutateAsync(data).then(() => undefined)}
     onCreateEmployee={(data) => createEmployee.mutateAsync(data).then(() => undefined)}
     onCreateTask={(data) => createTask.mutateAsync(data).then(() => undefined)}
