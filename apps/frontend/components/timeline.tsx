@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useMemo, useRef, useState } from 'react';
 import { addDays, differenceInCalendarDays, eachDayOfInterval, format, getISOWeek, isWeekend, parseISO, startOfDay, subDays } from 'date-fns';
 import type { Locale } from 'date-fns';
 import { de, enUS, es } from 'date-fns/locale';
@@ -375,6 +375,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
   const [showEmployeeOptions, setShowEmployeeOptions] = useState(false);
   const [rangeOffsetDays, setRangeOffsetDays] = useState(0);
   const [formError, setFormError] = useState('');
+  const planningScrollRef = useRef<HTMLDivElement | null>(null);
 
   const [newDepartment, setNewDepartment] = useState({ name: '', code: '' });
   const [newEmployee, setNewEmployee] = useState({
@@ -393,6 +394,39 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
   const dayW = 42;
   const start = addDays(parseISO(startDate), rangeOffsetDays);
   const dates = eachDayOfInterval({ start, end: addDays(start, days - 1) });
+  const timelineWidth = dates.length * dayW;
+  const totalRowWidth = leftColumnWidth + timelineWidth;
+
+  const weekGroups = useMemo(() => {
+    const groupedWeeks: { week: number; start: Date; end: Date; count: number }[] = [];
+    dates.forEach((date) => {
+      const currentWeek = getISOWeek(date);
+      const current = groupedWeeks[groupedWeeks.length - 1];
+
+      if (!current || current.week !== currentWeek) {
+        groupedWeeks.push({ week: currentWeek, start: date, end: date, count: 1 });
+        return;
+      }
+
+      current.end = date;
+      current.count += 1;
+    });
+
+    return groupedWeeks;
+  }, [dates]);
+
+  const handlePlanningWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const container = planningScrollRef.current;
+    if (!container) return;
+
+    const hasHorizontalOverflow = container.scrollWidth > container.clientWidth;
+    if (!hasHorizontalOverflow) return;
+
+    if (event.deltaY === 0) return;
+
+    container.scrollLeft += event.deltaY;
+    event.preventDefault();
+  }, []);
 
   const canCreateEmployee = departments.length > 0;
   const canCreateTask = employees.length > 0 && projects.length > 0;
@@ -601,31 +635,59 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm transition hover:bg-slate-50" onClick={() => setRangeOffsetDays(0)}>{t.today}</button>
     </div>
 
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-sm text-slate-600">{t.projectFilter}:</span>
-      <button type="button" onClick={() => setProjectFilter('all')} className={`rounded px-2 py-1 text-xs ${projectFilter === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}>{t.allProjects}</button>
-      {projects.map((p) => <button type="button" key={p.id} onClick={() => setProjectFilter(p.id)} className={`rounded px-2 py-1 text-xs ${projectFilter === p.id ? 'text-white ring-2 ring-offset-1 ring-slate-400' : 'text-white opacity-80'}`} style={{ background: p.colorHex }}>{p.projectName}</button>)}
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+      <span className="text-sm font-medium text-slate-600">{t.projectFilter}:</span>
+      <button
+        type="button"
+        onClick={() => setProjectFilter('all')}
+        className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-sm transition ${projectFilter === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-200/70'}`}
+      >
+        <span className={`h-2.5 w-2.5 rounded-full ${projectFilter === 'all' ? 'bg-white/90' : 'bg-slate-400'}`} />
+        <span>{t.allProjects}</span>
+      </button>
+      {projects.map((p) => (
+        <button
+          type="button"
+          key={p.id}
+          onClick={() => setProjectFilter(p.id)}
+          className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-sm transition ${projectFilter === p.id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-300' : 'text-slate-700 hover:bg-white/80'}`}
+        >
+          <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: p.colorHex }} />
+          <span className="font-medium">{p.projectName}</span>
+        </button>
+      ))}
     </div>
 
-    <div className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div
+      ref={planningScrollRef}
+      onWheel={handlePlanningWheel}
+      className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm"
+    >
       <div className="sticky top-0 z-20 bg-white border-b">
-        <div className="flex">
+        <div className="flex" style={{ minWidth: totalRowWidth }}>
           <div className="sticky left-0 z-30 box-border shrink-0 border-r bg-white" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }} />
           <div className="flex min-w-max">
-            {Array.from(new Set(dates.map((d) => getISOWeek(d)))).map((week) => {
-              const weekDays = dates.filter((d) => getISOWeek(d) === week);
-              return <div key={`${week}-${weekDays[0].toISOString()}`} style={{ width: weekDays.length * dayW }} className="border-r text-xs text-center shrink-0">{t.week} {week} {format(weekDays[0], 'dd MMM', { locale })}-{format(weekDays[weekDays.length - 1], 'dd MMM', { locale })}</div>;
-            })}
+            {weekGroups.map((week) => (
+              <div key={`${week.week}-${week.start.toISOString()}`} style={{ width: week.count * dayW }} className="shrink-0 border-r px-2 py-2 text-center">
+                <div className="inline-flex items-center gap-1.5 text-sm text-slate-700">
+                  <span className="font-bold">{t.week} {week.week}</span>
+                  <span className="font-normal">({format(week.start, 'dd.MM.', { locale })} - {format(week.end, 'dd.MM.', { locale })})</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-        <div className="flex">
+        <div className="flex" style={{ minWidth: totalRowWidth }}>
           <div className="sticky left-0 z-30 box-border shrink-0 border-r bg-white p-1 text-xs" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{t.departmentEmployee}</div>
           {dates.map((d) => <div key={d.toISOString()} style={{ width: dayW }} className={`shrink-0 text-center text-[10px] ${isWeekend(d) ? 'bg-slate-100' : ''}`}>{format(d, 'EE d', { locale })}</div>)}
         </div>
       </div>
 
-      {grouped.map((dep) => <div key={dep.id}><div className="sticky left-0 box-border z-10 shrink-0 border-b bg-slate-100 p-2 font-semibold" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{dep.name}</div>
-        {dep.employees.map((e: any) => <div key={e.employeeId} className="relative flex border-b h-[52px]">
+      {grouped.map((dep) => <div key={dep.id}><div className="flex border-b bg-slate-100" style={{ minWidth: totalRowWidth }}>
+        <div className="sticky left-0 box-border z-10 shrink-0 border-r bg-slate-100 p-2 font-semibold" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{dep.name}</div>
+        <div className="h-full" style={{ width: timelineWidth }} />
+      </div>
+        {dep.employees.map((e: any) => <div key={e.employeeId} className="relative flex border-b h-[52px]" style={{ minWidth: totalRowWidth }}>
           <button onClick={() => setEmployeeModal(e)} className="sticky left-0 z-10 box-border shrink-0 border-r bg-white px-2 text-left" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{e.employeeName}</button>
           <div className="relative flex min-w-max">{dates.map((d) => <button type="button" key={d.toISOString()} onClick={() => openTaskCreationPrefill({ employeeId: e.employeeId, startDate: toDateKey(d) })} style={{ width: dayW }} className={`${isWeekend(d) ? 'bg-slate-100' : 'bg-white'} shrink-0 border-r transition hover:bg-blue-50`} />)}</div>
           {filteredTasks.filter((x) => x.employeeId === e.employeeId).map((task: any) => {
