@@ -62,6 +62,9 @@ const I18N: Record<Lang, any> = {
     days: 'días',
     taskStart: 'Inicio',
     taskEnd: 'Fin',
+    taskTimeline: 'Línea de tiempo',
+    taskTimelineFrom: 'Desde',
+    taskTimelineTo: 'Hasta',
     employeeRole: 'Rol',
     employeeCost: 'Coste/h',
     employeeCapacity: 'Capacidad semanal',
@@ -120,6 +123,9 @@ const I18N: Record<Lang, any> = {
     days: 'days',
     taskStart: 'Start',
     taskEnd: 'End',
+    taskTimeline: 'Timeline',
+    taskTimelineFrom: 'From',
+    taskTimelineTo: 'To',
     employeeRole: 'Role',
     employeeCost: 'Cost/h',
     employeeCapacity: 'Weekly capacity',
@@ -178,6 +184,9 @@ const I18N: Record<Lang, any> = {
     days: 'Tage',
     taskStart: 'Start',
     taskEnd: 'End',
+    taskTimeline: 'Zeitleiste',
+    taskTimelineFrom: 'Von',
+    taskTimelineTo: 'Bis',
     employeeRole: 'Rolle',
     employeeCost: 'Kosten/h',
     employeeCapacity: 'Wochenkapazität',
@@ -459,10 +468,14 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
   };
 
   const getTaskEndDate = (task: any) => {
-    if (task.deadlineDate) return String(task.deadlineDate).slice(0, 10);
+    const startDate = String(task.scheduledStartDate || task.earliestStartDate || '').slice(0, 10);
+    if (startDate) return addWorkingDaysFrom(startDate, Number(task.durationDays) || 1);
     if (task.scheduledEndDateExclusive) return format(subDays(parseISO(String(task.scheduledEndDateExclusive).slice(0, 10)), 1), 'yyyy-MM-dd');
+    if (task.deadlineDate) return String(task.deadlineDate).slice(0, 10);
     return '';
   };
+
+  const getTaskStartDate = (task: any) => String(task.scheduledStartDate || task.earliestStartDate || '').slice(0, 10);
 
   const submitProject = async (e: FormEvent) => {
     e.preventDefault();
@@ -586,9 +599,32 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       <p className="text-slate-700">{t.description}: {taskModal.description}</p>
       <p className="text-slate-700">{t.taskProject}: {taskModal.project?.projectName}</p>
       <p className="text-slate-700">{t.taskPriority}: {taskModal.priority}</p>
-      <p className="text-slate-700">{t.taskDuration}: {taskModal.durationDays} {t.days}</p>
-      <p className="text-slate-700">{t.taskStart}: {String(taskModal.scheduledStartDate).slice(0, 10)}</p>
-      <p className="text-slate-700">{t.taskEnd}: {getTaskEndDate(taskModal)}</p>
+      <div className="grid gap-3 md:grid-cols-[1fr_260px] md:items-end">
+        <div className="space-y-3">
+          <p className="text-slate-700">{t.taskDuration}: {taskModal.durationDays} {t.days}</p>
+          <p className="text-slate-700">{t.taskStart}: {getTaskStartDate(taskModal)}</p>
+          <p className="text-slate-700">{t.taskEnd}: {getTaskEndDate(taskModal)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3" aria-label={t.taskTimeline}>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t.taskTimeline}</p>
+          <div className="relative mt-4 h-8">
+            <div className="absolute top-1/2 h-[2px] w-full -translate-y-1/2 rounded-full bg-slate-300" />
+            <div className="absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-blue-700 bg-white" />
+            <div className="absolute right-0 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-blue-700 bg-white" />
+            <div className="absolute left-0 top-1/2 h-2 w-full -translate-y-1/2 rounded-full bg-blue-700/85" />
+          </div>
+          <div className="mt-2 flex items-start justify-between text-[11px] text-slate-600">
+            <div>
+              <p className="font-semibold text-slate-700">{t.taskTimelineFrom}</p>
+              <p>{getTaskStartDate(taskModal)}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-semibold text-slate-700">{t.taskTimelineTo}</p>
+              <p>{getTaskEndDate(taskModal)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </Modal>}
     {employeeModal && <Modal onClose={() => setEmployeeModal(null)} title={employeeModal.employeeName}><p className="text-slate-700">{t.employeeRole}: {employeeModal.role}</p><p className="text-slate-700">{t.employeeCost}: {employeeModal.hourlyCost}</p><p className="text-slate-700">{t.employeeCapacity}: {employeeModal.weeklyCapacityHours}{t.hours}</p><button type="button" onClick={() => { setEmployeeModal(null); openTaskCreationPrefill({ employeeId: employeeModal.employeeId }); }} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700">{t.addTaskToEmployee}</button></Modal>}
 

@@ -49,7 +49,8 @@ describe('timeline', () => {
     renderTimeline();
     fireEvent.click(screen.getByText(/Tarea/));
     expect(screen.getByText('Descripción: Descripción')).toBeInTheDocument();
-    expect(screen.getByText(/Fin:/)).toBeInTheDocument();
+    expect(screen.getByText('Fin: 2026-01-06')).toBeInTheDocument();
+    expect(screen.getByLabelText('Línea de tiempo')).toBeInTheDocument();
   });
 
   it('project filter hides tasks from other projects', () => {
