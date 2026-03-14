@@ -64,4 +64,25 @@ describe('timeline', () => {
     expect(screen.getByText('Create new department')).toBeInTheDocument();
     expect(screen.getAllByText(/Wk/).length).toBeGreaterThan(0);
   });
+
+  it('task form shows duration and dates and defaults by one-week window', () => {
+    renderTimeline();
+    fireEvent.click(screen.getByText('Crear nuevo paquete de trabajo'));
+    expect(screen.getByDisplayValue('5')).toBeInTheDocument();
+    const dateInputs = screen.getAllByDisplayValue(/\d{4}-\d{2}-\d{2}/);
+    expect(dateInputs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('task form resets between openings while preserving single employee/project preselection', () => {
+    renderTimeline();
+    fireEvent.click(screen.getByText('Crear nuevo paquete de trabajo'));
+    fireEvent.change(screen.getByPlaceholderText('Título'), { target: { value: 'Nuevo paquete' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Close modal' }));
+
+    fireEvent.click(screen.getByText('Crear nuevo paquete de trabajo'));
+    expect(screen.getByPlaceholderText('Título')).toHaveValue('');
+    expect(screen.getByDisplayValue('José')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Proyecto')).toBeInTheDocument();
+  });
+
 });

@@ -58,6 +58,7 @@ const I18N: Record<Lang, any> = {
     taskDuration: 'Duración',
     days: 'días',
     taskStart: 'Inicio',
+    taskEnd: 'Fin',
     employeeRole: 'Rol',
     employeeCost: 'Coste/h',
     employeeCapacity: 'Capacidad semanal',
@@ -106,6 +107,7 @@ const I18N: Record<Lang, any> = {
     taskDuration: 'Duration',
     days: 'days',
     taskStart: 'Start',
+    taskEnd: 'End',
     employeeRole: 'Role',
     employeeCost: 'Cost/h',
     employeeCapacity: 'Weekly capacity',
@@ -154,6 +156,7 @@ const I18N: Record<Lang, any> = {
     taskDuration: 'Dauer',
     days: 'Tage',
     taskStart: 'Start',
+    taskEnd: 'End',
     employeeRole: 'Rolle',
     employeeCost: 'Kosten/h',
     employeeCapacity: 'Wochenkapazität',
@@ -169,7 +172,79 @@ const I18N: Record<Lang, any> = {
 
 const DATE_LOCALE: Record<Lang, Locale> = { es, en: enUS, de };
 
+const DEFAULT_TASK_DURATION_DAYS = 5;
+
+function toISODate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function nextWorkingDay(date: Date) {
+  const current = new Date(date);
+  while (isWeekend(current)) current.setDate(current.getDate() + 1);
+  return current;
+}
+
+function addWorkingDaysFrom(startDateISO: string, durationDays: number) {
+  const start = nextWorkingDay(parseISO(startDateISO));
+  const safeDuration = Math.max(1, Number(durationDays) || 1);
+  let remaining = safeDuration - 1;
+  const end = new Date(start);
+  while (remaining > 0) {
+    end.setDate(end.getDate() + 1);
+    if (!isWeekend(end)) remaining -= 1;
+  }
+  return toISODate(end);
+}
+
+function countWorkingDaysInclusive(startDateISO: string, endDateISO: string) {
+  const start = nextWorkingDay(parseISO(startDateISO));
+  const end = parseISO(endDateISO);
+  if (end < start) return 1;
+  let workingDays = 0;
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    if (!isWeekend(cursor)) workingDays += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return Math.max(1, workingDays);
+}
+
 export function Timeline({ employees, departments, projects, tasks, startDate, onCreateDepartment, onCreateEmployee, onCreateTask, onCreateProject }: Props) {
+  const getEmployeeNextFreeDate = (employeeId: string) => {
+    const today = nextWorkingDay(new Date());
+    if (!employeeId) return toISODate(today);
+    const employeeTasks = tasks.filter((task) => task.employeeId === employeeId && task.scheduledEndDateExclusive);
+    if (!employeeTasks.length) return toISODate(today);
+
+    const furthestEnd = employeeTasks.reduce((latest, task) => {
+      const endDate = parseISO(task.scheduledEndDateExclusive);
+      return endDate > latest ? endDate : latest;
+    }, today);
+
+    return toISODate(nextWorkingDay(furthestEnd > today ? furthestEnd : today));
+  };
+
+  const buildInitialTaskState = (employeeId?: string) => {
+    const hasSingleEmployee = employees.length === 1;
+    const hasSingleProject = projects.length === 1;
+    const selectedEmployeeId = employeeId || (hasSingleEmployee ? employees[0].employeeId : '');
+    const employee = employees.find((x) => x.employeeId === selectedEmployeeId);
+    const earliestStartDate = getEmployeeNextFreeDate(selectedEmployeeId);
+
+    return {
+      departmentId: employee?.departmentId || '',
+      employeeId: selectedEmployeeId,
+      projectId: hasSingleProject ? projects[0].id : '',
+      title: '',
+      description: '',
+      earliestStartDate,
+      deadlineDate: addWorkingDaysFrom(earliestStartDate, DEFAULT_TASK_DURATION_DAYS),
+      durationDays: DEFAULT_TASK_DURATION_DAYS,
+      priority: 'NORMAL',
+      status: 'PLANNED'
+    };
+  };
+
   const [language, setLanguage] = useState<Lang>('es');
   const [department, setDepartment] = useState('all');
   const [query, setQuery] = useState('');
@@ -184,9 +259,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     employeeName: '', departmentId: '', role: '', hourlyCost: 20, weeklyCapacityHours: 40, workLocationCountryCode: 'CO', workLocationSubdivisionCode: ''
   });
   const [newTask, setNewTask] = useState({
-    departmentId: '', employeeId: '', projectId: '', title: '', description: '',
-    earliestStartDate: startDate, deadlineDate: addDays(parseISO(startDate), 7).toISOString().slice(0, 10), durationDays: 3,
-    priority: 'NORMAL', status: 'PLANNED'
+    ...buildInitialTaskState(),
   });
   const [newProject, setNewProject] = useState({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED' });
 
@@ -218,6 +291,25 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     setFormError('');
   };
 
+  const openCreationModal = (type: 'department' | 'employee' | 'task' | 'project') => {
+    setFormError('');
+    if (type === 'department') setNewDepartment({ name: '', code: '' });
+    if (type === 'employee') {
+      setNewEmployee({
+        employeeName: '',
+        departmentId: departments.length === 1 ? departments[0].id : '',
+        role: '',
+        hourlyCost: 20,
+        weeklyCapacityHours: 40,
+        workLocationCountryCode: 'CO',
+        workLocationSubdivisionCode: ''
+      });
+    }
+    if (type === 'project') setNewProject({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED' });
+    if (type === 'task') setNewTask(buildInitialTaskState());
+    setCreationModal(type);
+  };
+
   const submitDepartment = async (e: FormEvent) => {
     e.preventDefault();
     try {
@@ -247,7 +339,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     try {
       setFormError('');
       await onCreateTask({ ...newTask, durationDays: Number(newTask.durationDays) });
-      setNewTask((v) => ({ ...v, title: '', description: '' }));
+      setNewTask(buildInitialTaskState());
       closeCreationModal();
     } catch (err: any) {
       setFormError(err?.message || t.errTask);
@@ -273,19 +365,19 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
         <p className="text-blue-100/90">{t.subtitle}</p>
       </div>
       <select className="rounded-lg border border-white/30 bg-white/10 p-2 text-sm text-white backdrop-blur-sm" value={language} onChange={(e) => setLanguage(e.target.value as Lang)}>
-        <option value="es">Español</option>
-        <option value="en">English</option>
-        <option value="de">Deutsch</option>
+        <option className="text-slate-900" value="es">Español</option>
+        <option className="text-slate-900" value="en">English</option>
+        <option className="text-slate-900" value="de">Deutsch</option>
       </select>
     </header>
 
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
       <h2 className="text-lg font-semibold text-slate-800">{t.createData}</h2>
       <div className="flex flex-wrap gap-2">
-        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700" onClick={() => setCreationModal('department')}>{t.createDepartment}</button>
-        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canCreateEmployee} title={!canCreateEmployee ? t.disabledEmployee : ''} onClick={() => setCreationModal('employee')}>{t.createEmployee}</button>
-        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700" onClick={() => setCreationModal('project')}>{t.createProject}</button>
-        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canCreateTask} title={!canCreateTask ? t.disabledTask : ''} onClick={() => setCreationModal('task')}>{t.createTask}</button>
+        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700" onClick={() => openCreationModal('department')}>{t.createDepartment}</button>
+        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canCreateEmployee} title={!canCreateEmployee ? t.disabledEmployee : ''} onClick={() => openCreationModal('employee')}>{t.createEmployee}</button>
+        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700" onClick={() => openCreationModal('project')}>{t.createProject}</button>
+        <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canCreateTask} title={!canCreateTask ? t.disabledTask : ''} onClick={() => openCreationModal('task')}>{t.createTask}</button>
       </div>
       {(!canCreateEmployee || !canCreateTask) && (
         <div className="text-xs text-slate-500 space-y-1">
@@ -394,7 +486,14 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
           <select className="w-full rounded-lg border border-slate-200 p-3" value={newTask.employeeId} onChange={(e) => {
             const employeeId = e.target.value;
             const employee = employees.find((x) => x.employeeId === employeeId);
-            setNewTask((v) => ({ ...v, employeeId, departmentId: employee?.departmentId || v.departmentId }));
+            const earliestStartDate = getEmployeeNextFreeDate(employeeId);
+            setNewTask((v) => ({
+              ...v,
+              employeeId,
+              departmentId: employee?.departmentId || v.departmentId,
+              earliestStartDate,
+              deadlineDate: addWorkingDaysFrom(earliestStartDate, Number(v.durationDays) || DEFAULT_TASK_DURATION_DAYS)
+            }));
           }} required>
             <option value="">{t.employeePlaceholder}</option>
             {employees.map((emp) => <option key={emp.employeeId} value={emp.employeeId}>{emp.employeeName}</option>)}
@@ -403,6 +502,49 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
             <option value="">{t.projectPlaceholder}</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.projectName}</option>)}
           </select>
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="space-y-1 text-sm text-slate-700">
+              <span>{t.taskDuration} ({t.days})</span>
+              <input
+                className="w-full rounded-lg border border-slate-200 p-3"
+                type="number"
+                min={1}
+                value={newTask.durationDays}
+                onChange={(e) => {
+                  const durationDays = Math.max(1, Number(e.target.value) || 1);
+                  setNewTask((v) => ({ ...v, durationDays, deadlineDate: addWorkingDaysFrom(v.earliestStartDate, durationDays) }));
+                }}
+                required
+              />
+            </label>
+            <label className="space-y-1 text-sm text-slate-700">
+              <span>{t.taskStart}</span>
+              <input
+                className="w-full rounded-lg border border-slate-200 p-3"
+                type="date"
+                value={newTask.earliestStartDate}
+                onChange={(e) => {
+                  const earliestStartDate = toISODate(nextWorkingDay(parseISO(e.target.value)));
+                  setNewTask((v) => ({ ...v, earliestStartDate, deadlineDate: addWorkingDaysFrom(earliestStartDate, Number(v.durationDays) || 1) }));
+                }}
+                required
+              />
+            </label>
+            <label className="space-y-1 text-sm text-slate-700">
+              <span>{t.taskEnd}</span>
+              <input
+                className="w-full rounded-lg border border-slate-200 p-3"
+                type="date"
+                value={newTask.deadlineDate}
+                onChange={(e) => {
+                  const selectedEnd = e.target.value;
+                  const durationDays = countWorkingDaysInclusive(newTask.earliestStartDate, selectedEnd);
+                  setNewTask((v) => ({ ...v, durationDays, deadlineDate: addWorkingDaysFrom(v.earliestStartDate, durationDays) }));
+                }}
+                required
+              />
+            </label>
+          </div>
           <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{t.saveTask}</button>
         </form>
       </Modal>
