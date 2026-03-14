@@ -1,33 +1,53 @@
+import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Timeline } from '../components/timeline';
 
 const departments = [{ id: 'd1', name: 'Engineering' }];
-const employees = [{ employeeId: 'e1', employeeName: 'José', departmentId: 'd1', role:'Dev', hourlyCost:10, weeklyCapacityHours:40 }];
+const employees = [{ employeeId: 'e1', employeeName: 'José', departmentId: 'd1', role: 'Dev', hourlyCost: 10, weeklyCapacityHours: 40 }];
 const projects = [{ id: 'p1', projectName: 'Proyecto', colorHex: '#000' }];
-const tasks = [{ id: 't1', employeeId: 'e1', title: 'Tarea', description: 'Descripción', scheduledStartDate: '2026-01-05', scheduledEndDateExclusive: '2026-01-07', project: projects[0], priority: 'NORMAL', durationDays:2 }];
+const tasks = [{ id: 't1', employeeId: 'e1', title: 'Tarea', description: 'Descripción', scheduledStartDate: '2026-01-05', scheduledEndDateExclusive: '2026-01-07', project: projects[0], priority: 'NORMAL', durationDays: 2 }];
+
+const renderTimeline = () => render(
+  <Timeline
+    departments={departments}
+    employees={employees}
+    projects={projects}
+    tasks={tasks}
+    startDate="2026-01-01"
+    onCreateDepartment={async () => undefined}
+    onCreateEmployee={async () => undefined}
+    onCreateTask={async () => undefined}
+  />
+);
 
 describe('timeline', () => {
   it('department filter', () => {
-    render(<Timeline departments={departments} employees={employees} projects={projects} tasks={tasks} startDate="2026-01-01" />);
-    expect(screen.getByText('Engineering')).toBeInTheDocument();
+    renderTimeline();
+    expect(screen.getAllByText('Engineering').length).toBeGreaterThan(0);
   });
   it('accent-insensitive search', () => {
-    render(<Timeline departments={departments} employees={employees} projects={projects} tasks={tasks} startDate="2026-01-01" />);
+    renderTimeline();
     fireEvent.change(screen.getByPlaceholderText('Buscar'), { target: { value: 'jose' } });
-    expect(screen.getByText('José')).toBeInTheDocument();
+    expect(screen.getAllByText('José').length).toBeGreaterThan(0);
   });
   it('task modal open', () => {
-    render(<Timeline departments={departments} employees={employees} projects={projects} tasks={tasks} startDate="2026-01-01" />);
+    renderTimeline();
     fireEvent.click(screen.getByText(/Tarea/));
     expect(screen.getByText('Prioridad: NORMAL')).toBeInTheDocument();
   });
   it('employee modal open', () => {
-    render(<Timeline departments={departments} employees={employees} projects={projects} tasks={tasks} startDate="2026-01-01" />);
-    fireEvent.click(screen.getByText('José'));
+    renderTimeline();
+    fireEvent.click(screen.getByRole('button', { name: 'José' }));
     expect(screen.getByText('Rol: Dev')).toBeInTheDocument();
   });
   it('non-working day highlight', () => {
-    render(<Timeline departments={departments} employees={employees} projects={projects} tasks={tasks} startDate="2026-01-01" />);
+    renderTimeline();
     expect(document.querySelectorAll('.bg-blue-50').length).toBeGreaterThan(0);
+  });
+  it('time range navigation is visible', () => {
+    renderTimeline();
+    expect(screen.getByText('Mes siguiente →')).toBeInTheDocument();
+    expect(screen.getByText('← Mes anterior')).toBeInTheDocument();
+    expect(screen.getByText('Hoy')).toBeInTheDocument();
   });
 });
