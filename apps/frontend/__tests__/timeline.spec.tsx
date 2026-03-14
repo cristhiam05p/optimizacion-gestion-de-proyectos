@@ -43,7 +43,7 @@ describe('timeline', () => {
   });
   it('non-working day highlight', () => {
     renderTimeline();
-    expect(document.querySelectorAll('.bg-blue-50').length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('.bg-slate-100').length).toBeGreaterThan(0);
   });
   it('time range navigation is visible', () => {
     renderTimeline();

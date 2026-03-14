@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { FormEvent, useMemo, useState } from 'react';
-import { addDays, differenceInCalendarDays, eachDayOfInterval, format, getISOWeek, isWeekend, parseISO } from 'date-fns';
+import { addDays, differenceInCalendarDays, eachDayOfInterval, format, getISOWeek, isWeekend, parseISO, subDays } from 'date-fns';
 import type { Locale } from 'date-fns';
 import { de, enUS, es } from 'date-fns/locale';
 import { normalize } from '../lib/api';
@@ -209,6 +209,54 @@ function countWorkingDaysInclusive(startDateISO: string, endDateISO: string) {
   return Math.max(1, workingDays);
 }
 
+function toDateKey(date: Date) {
+  return format(date, 'yyyy-MM-dd');
+}
+
+function isBlockedDay(date: Date, holidaySet: Set<string>) {
+  return isWeekend(date) || holidaySet.has(toDateKey(date));
+}
+
+function buildTaskSegments(task: any, timelineStart: Date, dayWidth: number) {
+  const taskStart = parseISO(String(task.scheduledStartDate).slice(0, 10));
+  const taskEndExclusive = parseISO(String(task.scheduledEndDateExclusive).slice(0, 10));
+
+  if (taskEndExclusive <= taskStart) {
+    return [{ left: differenceInCalendarDays(taskStart, timelineStart) * dayWidth, width: dayWidth }];
+  }
+
+  const holidaySet = new Set<string>(
+    [
+      ...(Array.isArray(task.nonWorkingDates) ? task.nonWorkingDates : []),
+      ...(Array.isArray(task.holidayDates) ? task.holidayDates : [])
+    ].map((d) => String(d).slice(0, 10))
+  );
+
+  const days = eachDayOfInterval({ start: taskStart, end: subDays(taskEndExclusive, 1) })
+    .filter((d) => !isBlockedDay(d, holidaySet));
+
+  if (!days.length) return [];
+
+  const indices = days.map((d) => differenceInCalendarDays(d, timelineStart));
+  const segments: { left: number; width: number }[] = [];
+  let segmentStart = indices[0];
+  let previous = indices[0];
+
+  for (let i = 1; i < indices.length; i += 1) {
+    const current = indices[i];
+    if (current === previous + 1) {
+      previous = current;
+      continue;
+    }
+    segments.push({ left: segmentStart * dayWidth, width: (previous - segmentStart + 1) * dayWidth });
+    segmentStart = current;
+    previous = current;
+  }
+
+  segments.push({ left: segmentStart * dayWidth, width: (previous - segmentStart + 1) * dayWidth });
+  return segments;
+}
+
 export function Timeline({ employees, departments, projects, tasks, startDate, onCreateDepartment, onCreateEmployee, onCreateTask, onCreateProject }: Props) {
   const getEmployeeNextFreeDate = (employeeId: string) => {
     const today = nextWorkingDay(new Date());
@@ -407,7 +455,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     <div className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="sticky top-0 z-20 bg-white border-b">
         <div className="flex">
-          <div className="sticky left-0 bg-white z-30 border-r" style={{ width: leftColumnWidth }} />
+          <div className="sticky left-0 z-30 box-border shrink-0 border-r bg-white" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }} />
           <div className="flex min-w-max">
             {Array.from(new Set(dates.map((d) => getISOWeek(d)))).map((week) => {
               const weekDays = dates.filter((d) => getISOWeek(d) === week);
@@ -416,19 +464,20 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
           </div>
         </div>
         <div className="flex">
-          <div className="sticky left-0 z-30 bg-white border-r text-xs p-1" style={{ width: leftColumnWidth }}>{t.departmentEmployee}</div>
-          {dates.map((d) => <div key={d.toISOString()} style={{ width: dayW }} className={`text-center text-[10px] shrink-0 ${isWeekend(d) ? 'bg-blue-50' : ''}`}>{format(d, 'EE d', { locale })}</div>)}
+          <div className="sticky left-0 z-30 box-border shrink-0 border-r bg-white p-1 text-xs" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{t.departmentEmployee}</div>
+          {dates.map((d) => <div key={d.toISOString()} style={{ width: dayW }} className={`shrink-0 text-center text-[10px] ${isWeekend(d) ? 'bg-slate-100' : ''}`}>{format(d, 'EE d', { locale })}</div>)}
         </div>
       </div>
 
-      {grouped.map((dep) => <div key={dep.id}><div className="sticky left-0 bg-slate-100 p-2 font-semibold border-b" style={{ width: leftColumnWidth }}>{dep.name}</div>
+      {grouped.map((dep) => <div key={dep.id}><div className="sticky left-0 box-border z-10 shrink-0 border-b bg-slate-100 p-2 font-semibold" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{dep.name}</div>
         {dep.employees.map((e: any) => <div key={e.employeeId} className="relative flex border-b h-[52px]">
-          <button onClick={() => setEmployeeModal(e)} className="sticky left-0 z-10 bg-white border-r text-left px-2" style={{ width: leftColumnWidth }}>{e.employeeName}</button>
-          <div className="relative flex min-w-max">{dates.map((d) => <div key={d.toISOString()} style={{ width: dayW }} className={`${isWeekend(d) ? 'bg-blue-50' : ''} border-r shrink-0`} />)}</div>
+          <button onClick={() => setEmployeeModal(e)} className="sticky left-0 z-10 box-border shrink-0 border-r bg-white px-2 text-left" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{e.employeeName}</button>
+          <div className="relative flex min-w-max">{dates.map((d) => <div key={d.toISOString()} style={{ width: dayW }} className={`${isWeekend(d) ? 'bg-slate-100' : ''} shrink-0 border-r`} />)}</div>
           {tasks.filter((x) => x.employeeId === e.employeeId).map((task: any) => {
-            const left = differenceInCalendarDays(new Date(task.scheduledStartDate), start) * dayW;
-            const width = Math.max(1, differenceInCalendarDays(new Date(task.scheduledEndDateExclusive), new Date(task.scheduledStartDate))) * dayW;
-            return <button key={task.id} onClick={() => setTaskModal(task)} className="absolute top-2 h-8 rounded text-white text-xs px-2 text-left overflow-hidden" style={{ left: leftColumnWidth + left, width, background: task.project?.colorHex || '#334155' }}>{task.title} · {task.project?.projectName}</button>;
+            const segments = buildTaskSegments(task, start, dayW);
+            return segments.map((segment, index) => (
+              <button key={`${task.id}-${segment.left}-${index}`} onClick={() => setTaskModal(task)} className="absolute top-2 h-8 overflow-hidden rounded px-2 text-left text-xs text-white" style={{ left: leftColumnWidth + segment.left, width: segment.width, background: task.project?.colorHex || '#334155' }}>{task.title} · {task.project?.projectName}</button>
+            ));
           })}
         </div>)}
       </div>)}
