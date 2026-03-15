@@ -16,6 +16,8 @@ const renderTimeline = () => render(
     startDate="2026-01-01"
     onCreateDepartment={async () => undefined}
     onCreateEmployee={async () => undefined}
+    onUpdateEmployee={async () => undefined}
+    onDeleteEmployee={async () => undefined}
     onCreateTask={async () => undefined}
     onUpdateTask={async () => undefined}
     onDeleteTask={async () => undefined}
@@ -63,6 +65,8 @@ describe('timeline', () => {
         startDate="2026-01-01"
         onCreateDepartment={async () => undefined}
         onCreateEmployee={async () => undefined}
+        onUpdateEmployee={async () => undefined}
+        onDeleteEmployee={async () => undefined}
         onCreateTask={async () => undefined}
         onUpdateTask={async () => undefined}
         onDeleteTask={async () => undefined}
@@ -84,6 +88,8 @@ describe('timeline', () => {
         startDate="2026-01-01"
         onCreateDepartment={async () => undefined}
         onCreateEmployee={async () => undefined}
+        onUpdateEmployee={async () => undefined}
+        onDeleteEmployee={async () => undefined}
         onCreateTask={async () => undefined}
         onUpdateTask={async () => undefined}
         onDeleteTask={async () => undefined}
@@ -104,6 +110,34 @@ describe('timeline', () => {
     expect(screen.getByText('Mes siguiente →')).toBeInTheDocument();
     expect(screen.getByText('← Mes anterior')).toBeInTheDocument();
     expect(screen.getByText('Hoy')).toBeInTheDocument();
+  });
+
+  it('maps wheel vertical intent to horizontal-only movement in planning area', () => {
+    renderTimeline();
+    const planning = screen.getByTestId('planning-scroll');
+    Object.defineProperty(planning, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(planning, 'scrollWidth', { value: 3000, configurable: true });
+    Object.defineProperty(planning, 'scrollLeft', { value: 100, writable: true, configurable: true });
+
+    const event = new WheelEvent('wheel', { deltaY: 120, deltaX: 0, bubbles: true, cancelable: true });
+    planning.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect((planning as HTMLDivElement).scrollLeft).toBe(220);
+  });
+
+  it('extends timeline dynamically while approaching right edge', () => {
+    renderTimeline();
+    const planning = screen.getByTestId('planning-scroll');
+    Object.defineProperty(planning, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(planning, 'scrollWidth', { value: 7800, configurable: true });
+    Object.defineProperty(planning, 'scrollLeft', { value: 7000, writable: true, configurable: true });
+
+    const before = screen.getAllByTestId('timeline-day-header').length;
+    fireEvent.scroll(planning);
+    const after = screen.getAllByTestId('timeline-day-header').length;
+
+    expect(after).toBeGreaterThan(before);
   });
 
   it('opens create department modal from button', () => {
