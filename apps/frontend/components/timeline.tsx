@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { FormEvent, useCallback, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, differenceInCalendarDays, eachDayOfInterval, format, getISOWeek, isWeekend, parseISO, startOfDay, subDays } from 'date-fns';
 import type { Locale } from 'date-fns';
 import { de, enUS, es } from 'date-fns/locale';
@@ -240,6 +240,10 @@ const I18N: Record<Lang, any> = {
 const DATE_LOCALE: Record<Lang, Locale> = { es, en: enUS, de };
 
 const DEFAULT_TASK_DURATION_DAYS = 5;
+const INITIAL_TIMELINE_DAYS = 180;
+const TIMELINE_EXTENSION_DAYS = 180;
+const MAX_TIMELINE_DAYS = 7200;
+const EXTENSION_TRIGGER_DAYS = 28;
 
 function toISODate(date: Date) {
   return format(date, 'yyyy-MM-dd');
@@ -374,8 +378,11 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
   const [showTaskOptions, setShowTaskOptions] = useState(false);
   const [showEmployeeOptions, setShowEmployeeOptions] = useState(false);
   const [rangeOffsetDays, setRangeOffsetDays] = useState(0);
+  const [timelineDays, setTimelineDays] = useState(INITIAL_TIMELINE_DAYS);
   const [formError, setFormError] = useState('');
   const planningScrollRef = useRef<HTMLDivElement | null>(null);
+  const pendingPrependOffsetRef = useRef(0);
+  const isRangeExtendingRef = useRef(false);
 
   const [newDepartment, setNewDepartment] = useState({ name: '', code: '' });
   const [newEmployee, setNewEmployee] = useState({
@@ -390,12 +397,26 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
   const locale = DATE_LOCALE[language];
   const leftColumnWidth = 260;
 
-  const days = 90;
   const dayW = 42;
   const start = addDays(parseISO(startDate), rangeOffsetDays);
-  const dates = eachDayOfInterval({ start, end: addDays(start, days - 1) });
+  const dates = eachDayOfInterval({ start, end: addDays(start, timelineDays - 1) });
   const timelineWidth = dates.length * dayW;
   const totalRowWidth = leftColumnWidth + timelineWidth;
+
+  const maybeExtendTimeline = useCallback((direction: 'left' | 'right') => {
+    if (isRangeExtendingRef.current) return;
+
+    isRangeExtendingRef.current = true;
+
+    if (direction === 'right') {
+      setTimelineDays((current) => Math.min(MAX_TIMELINE_DAYS, current + TIMELINE_EXTENSION_DAYS));
+      return;
+    }
+
+    setRangeOffsetDays((current) => current - TIMELINE_EXTENSION_DAYS);
+    setTimelineDays((current) => Math.min(MAX_TIMELINE_DAYS, current + TIMELINE_EXTENSION_DAYS));
+    pendingPrependOffsetRef.current += TIMELINE_EXTENSION_DAYS * dayW;
+  }, [dayW]);
 
   const weekGroups = useMemo(() => {
     const groupedWeeks: { week: number; start: Date; end: Date; count: number }[] = [];
@@ -422,11 +443,53 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     const hasHorizontalOverflow = container.scrollWidth > container.clientWidth;
     if (!hasHorizontalOverflow) return;
 
-    if (event.deltaY === 0) return;
+    const horizontalIntent = Math.abs(event.deltaY) >= Math.abs(event.deltaX) && event.deltaY !== 0;
+    if (!horizontalIntent) return;
 
-    container.scrollLeft += event.deltaY;
+    const horizontalDelta = event.deltaY;
+    container.scrollLeft += horizontalDelta;
     event.preventDefault();
-  }, []);
+    event.stopPropagation();
+
+    const extensionThreshold = dayW * EXTENSION_TRIGGER_DAYS;
+    const rightRemaining = container.scrollWidth - container.clientWidth - container.scrollLeft;
+    if (horizontalDelta > 0 && rightRemaining <= extensionThreshold) {
+      maybeExtendTimeline('right');
+      return;
+    }
+    if (horizontalDelta < 0 && container.scrollLeft <= extensionThreshold) {
+      maybeExtendTimeline('left');
+    }
+  }, [dayW, maybeExtendTimeline]);
+
+  const handlePlanningScroll = useCallback(() => {
+    const container = planningScrollRef.current;
+    if (!container) return;
+
+    const extensionThreshold = dayW * EXTENSION_TRIGGER_DAYS;
+    const rightRemaining = container.scrollWidth - container.clientWidth - container.scrollLeft;
+
+    if (rightRemaining <= extensionThreshold) {
+      maybeExtendTimeline('right');
+      return;
+    }
+
+    if (container.scrollLeft <= extensionThreshold) {
+      maybeExtendTimeline('left');
+    }
+  }, [dayW, maybeExtendTimeline]);
+
+  useEffect(() => {
+    isRangeExtendingRef.current = false;
+  }, [rangeOffsetDays, timelineDays]);
+
+  useLayoutEffect(() => {
+    const container = planningScrollRef.current;
+    if (!container || pendingPrependOffsetRef.current === 0) return;
+
+    container.scrollLeft += pendingPrependOffsetRef.current;
+    pendingPrependOffsetRef.current = 0;
+  }, [rangeOffsetDays, timelineDays]);
 
   const canCreateEmployee = departments.length > 0;
   const canCreateTask = employees.length > 0 && projects.length > 0;
@@ -661,6 +724,8 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     <div
       ref={planningScrollRef}
       onWheel={handlePlanningWheel}
+      onScroll={handlePlanningScroll}
+      data-testid="planning-scroll"
       className="overflow-auto rounded-2xl border border-slate-200 bg-white shadow-sm"
     >
       <div className="sticky top-0 z-20 bg-white border-b">
@@ -679,7 +744,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
         </div>
         <div className="flex" style={{ minWidth: totalRowWidth }}>
           <div className="sticky left-0 z-30 box-border shrink-0 border-r bg-white p-1 text-xs" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{t.departmentEmployee}</div>
-          {dates.map((d) => <div key={d.toISOString()} style={{ width: dayW }} className={`shrink-0 text-center text-[10px] ${isWeekend(d) ? 'bg-slate-100' : ''}`}>{format(d, 'EE d', { locale })}</div>)}
+          {dates.map((d) => <div data-testid="timeline-day-header" key={d.toISOString()} style={{ width: dayW }} className={`shrink-0 text-center text-[10px] ${isWeekend(d) ? 'bg-slate-100' : ''}`}>{format(d, 'EE d', { locale })}</div>)}
         </div>
       </div>
 
