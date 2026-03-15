@@ -443,11 +443,14 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     const hasHorizontalOverflow = container.scrollWidth > container.clientWidth;
     if (!hasHorizontalOverflow) return;
 
-    const horizontalIntent = Math.abs(event.deltaY) >= Math.abs(event.deltaX) && event.deltaY !== 0;
-    if (!horizontalIntent) return;
+    const previousScrollTop = container.scrollTop;
 
-    const horizontalDelta = event.deltaY;
+    const horizontalIntent = Math.abs(event.deltaY) >= Math.abs(event.deltaX) && event.deltaY !== 0;
+    const horizontalDelta = horizontalIntent ? event.deltaY : event.deltaX;
+    if (horizontalDelta === 0) return;
+
     container.scrollLeft += horizontalDelta;
+    container.scrollTop = previousScrollTop;
     event.preventDefault();
     event.stopPropagation();
 
@@ -490,6 +493,19 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     container.scrollLeft += pendingPrependOffsetRef.current;
     pendingPrependOffsetRef.current = 0;
   }, [rangeOffsetDays, timelineDays]);
+
+  const handleGoToToday = useCallback(() => {
+    setRangeOffsetDays(0);
+    setTimelineDays(INITIAL_TIMELINE_DAYS);
+    pendingPrependOffsetRef.current = 0;
+    isRangeExtendingRef.current = false;
+
+    requestAnimationFrame(() => {
+      const container = planningScrollRef.current;
+      if (!container) return;
+      container.scrollLeft = 0;
+    });
+  }, []);
 
   const canCreateEmployee = departments.length > 0;
   const canCreateTask = employees.length > 0 && projects.length > 0;
@@ -695,7 +711,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       <span className="text-sm text-slate-600">{t.visibleRange}: {format(dates[0], 'dd MMM yyyy', { locale })} - {format(dates[dates.length - 1], 'dd MMM yyyy', { locale })}</span>
       <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm transition hover:bg-slate-50" onClick={() => setRangeOffsetDays((v) => v - 30)}>{t.previousMonth}</button>
       <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm transition hover:bg-slate-50" onClick={() => setRangeOffsetDays((v) => v + 30)}>{t.nextMonth}</button>
-      <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm transition hover:bg-slate-50" onClick={() => setRangeOffsetDays(0)}>{t.today}</button>
+      <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm transition hover:bg-slate-50" onClick={handleGoToToday}>{t.today}</button>
     </div>
 
     <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5">
