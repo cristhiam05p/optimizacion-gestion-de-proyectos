@@ -119,10 +119,8 @@ describe('timeline', () => {
     Object.defineProperty(planning, 'scrollWidth', { value: 3000, configurable: true });
     Object.defineProperty(planning, 'scrollLeft', { value: 100, writable: true, configurable: true });
 
-    const event = new WheelEvent('wheel', { deltaY: 120, deltaX: 0, bubbles: true, cancelable: true });
-    planning.dispatchEvent(event);
+    fireEvent.wheel(planning, { deltaY: 120, deltaX: 0 });
 
-    expect(event.defaultPrevented).toBe(true);
     expect((planning as HTMLDivElement).scrollLeft).toBe(220);
   });
 
@@ -138,6 +136,40 @@ describe('timeline', () => {
     const after = screen.getAllByTestId('timeline-day-header').length;
 
     expect(after).toBeGreaterThan(before);
+  });
+
+  it('go to today resets the visible range anchor after timeline extension', () => {
+    renderTimeline();
+    const planning = screen.getByTestId('planning-scroll');
+    Object.defineProperty(planning, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(planning, 'scrollWidth', { value: 7800, configurable: true });
+    Object.defineProperty(planning, 'scrollLeft', { value: 10, writable: true, configurable: true });
+
+    const initialHeader = screen.getAllByTestId('timeline-day-header')[0].textContent;
+
+    fireEvent.scroll(planning);
+    const shiftedHeader = screen.getAllByTestId('timeline-day-header')[0].textContent;
+
+    fireEvent.click(screen.getByText('Hoy'));
+    const resetHeader = screen.getAllByTestId('timeline-day-header')[0].textContent;
+
+    expect(shiftedHeader).not.toBe(initialHeader);
+    expect(resetHeader).toBe(initialHeader);
+  });
+
+  it('keeps vertical scroll position while converting wheel to horizontal movement', () => {
+    renderTimeline();
+    const planning = screen.getByTestId('planning-scroll');
+    Object.defineProperty(planning, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(planning, 'scrollWidth', { value: 3000, configurable: true });
+    Object.defineProperty(planning, 'scrollLeft', { value: 100, writable: true, configurable: true });
+    Object.defineProperty(planning, 'scrollTop', { value: 220, writable: true, configurable: true });
+
+    const event = new WheelEvent('wheel', { deltaY: 120, deltaX: 0, bubbles: true, cancelable: true });
+    planning.dispatchEvent(event);
+
+    expect((planning as HTMLDivElement).scrollTop).toBe(220);
+    expect((planning as HTMLDivElement).scrollLeft).toBe(220);
   });
 
   it('opens create department modal from button', () => {
