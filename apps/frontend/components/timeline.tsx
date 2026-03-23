@@ -1,10 +1,11 @@
 'use client';
 import React from 'react';
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { addDays, differenceInCalendarDays, eachDayOfInterval, format, getISOWeek, isWeekend, parseISO, startOfDay, subDays } from 'date-fns';
+import { addDays, differenceInCalendarDays, eachDayOfInterval, format, getISOWeek, isWeekend, parseISO, subDays } from 'date-fns';
 import type { Locale } from 'date-fns';
 import { de, enUS, es } from 'date-fns/locale';
 import { normalize } from '../lib/api';
+import { Modal, TaskDetailModal, addWorkingDaysFrom, buildTaskModalPayload, countWorkingDaysInclusive, describeDependency, formatDependencyType, nextWorkingDay, toISODate } from './task-shared';
 
 type Props = {
   employees: any[];
@@ -245,41 +246,6 @@ const TIMELINE_EXTENSION_DAYS = 180;
 const MAX_TIMELINE_DAYS = 7200;
 const EXTENSION_TRIGGER_DAYS = 28;
 
-function toISODate(date: Date) {
-  return format(date, 'yyyy-MM-dd');
-}
-
-function nextWorkingDay(date: Date) {
-  const current = startOfDay(date);
-  while (isWeekend(current)) current.setDate(current.getDate() + 1);
-  return current;
-}
-
-function addWorkingDaysFrom(startDateISO: string, durationDays: number) {
-  const start = nextWorkingDay(parseISO(startDateISO));
-  const safeDuration = Math.max(1, Number(durationDays) || 1);
-  let remaining = safeDuration - 1;
-  const end = new Date(start);
-  while (remaining > 0) {
-    end.setDate(end.getDate() + 1);
-    if (!isWeekend(end)) remaining -= 1;
-  }
-  return toISODate(end);
-}
-
-function countWorkingDaysInclusive(startDateISO: string, endDateISO: string) {
-  const start = nextWorkingDay(parseISO(startDateISO));
-  const end = parseISO(endDateISO);
-  if (end < start) return 1;
-  let workingDays = 0;
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    if (!isWeekend(cursor)) workingDays += 1;
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return Math.max(1, workingDays);
-}
-
 function toDateKey(date: Date) {
   return format(date, 'yyyy-MM-dd');
 }
@@ -331,6 +297,9 @@ function buildTaskSegments(task: any, timelineStart: Date, dayWidth: number) {
 }
 
 export function Timeline({ employees, departments, projects, tasks, startDate, onCreateDepartment, onCreateEmployee, onUpdateEmployee, onDeleteEmployee, onCreateTask, onUpdateTask, onDeleteTask, onCreateProject }: Props) {
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+  const [dependencyNotice, setDependencyNotice] = useState('');
+
   const getEmployeeNextFreeDate = (employeeId: string) => {
     const today = nextWorkingDay(new Date());
     if (!employeeId) return toISODate(today);
@@ -403,6 +372,20 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
   const dates = eachDayOfInterval({ start, end: addDays(start, timelineDays - 1) });
   const timelineWidth = dates.length * dayW;
   const totalRowWidth = leftColumnWidth + timelineWidth;
+  const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const availableDependencyTasks = useMemo(() => tasks.filter((task: any) => task.id !== editTaskId && task.id !== taskModal?.id), [editTaskId, taskModal?.id, tasks]);
+  const taskRelations = useMemo(() => {
+    const relations = new Map<string, Set<string>>();
+    tasks.forEach((task) => {
+      (task.predecessorDeps || []).forEach((dep: any) => {
+        if (!relations.has(task.id)) relations.set(task.id, new Set());
+        if (!relations.has(dep.predecessorTaskId)) relations.set(dep.predecessorTaskId, new Set());
+        relations.get(task.id)!.add(dep.predecessorTaskId);
+        relations.get(dep.predecessorTaskId)!.add(task.id);
+      });
+    });
+    return relations;
+  }, [tasks]);
 
   const maybeExtendTimeline = useCallback((direction: 'left' | 'right') => {
     if (isRangeExtendingRef.current) return;
@@ -444,16 +427,14 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     const hasHorizontalOverflow = container.scrollWidth > container.clientWidth;
     if (!hasHorizontalOverflow) return;
 
-    const previousScrollTop = container.scrollTop;
+    const isHorizontalIntent = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
+    if (!isHorizontalIntent) return;
 
-    const horizontalIntent = Math.abs(event.deltaY) >= Math.abs(event.deltaX) && event.deltaY !== 0;
-    const horizontalDelta = horizontalIntent ? event.deltaY : event.deltaX;
+    const horizontalDelta = event.shiftKey && event.deltaY !== 0 ? event.deltaY : event.deltaX;
     if (horizontalDelta === 0) return;
 
     container.scrollLeft += horizontalDelta;
-    container.scrollTop = previousScrollTop;
     event.preventDefault();
-    event.stopPropagation();
 
     const extensionThreshold = dayW * EXTENSION_TRIGGER_DAYS;
     const rightRemaining = container.scrollWidth - container.clientWidth - container.scrollLeft;
@@ -524,13 +505,69 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
 
   const grouped = departments.map((d) => ({ ...d, employees: filteredEmployees.filter((e) => e.departmentId === d.id) })).filter((d) => d.employees.length);
 
+  const getDependencyMinimumStart = useCallback((dependencies: any[], fallbackStart: string) => {
+    const candidates = dependencies
+      .filter((dependency: any) => dependency.predecessorTaskId)
+      .map((dependency: any) => {
+        const predecessor = taskMap.get(dependency.predecessorTaskId);
+        if (!predecessor) return null;
+        const predecessorStart = String(predecessor.scheduledStartDate || predecessor.earliestStartDate).slice(0, 10);
+        const predecessorEnd = getTaskEndDate(predecessor);
+        const offsetDays = Number(dependency.offsetDays || 0);
+        const baseDate = dependency.dependencyType === 'SS' || dependency.dependencyType === 'SF' ? predecessorStart : predecessorEnd;
+        return addWorkingDaysFrom(baseDate, Math.max(1, offsetDays + 1));
+      })
+      .filter(Boolean) as string[];
+
+    if (!candidates.length) return fallbackStart;
+    return candidates.sort().at(-1) || fallbackStart;
+  }, [taskMap]);
+
+  const syncTaskDatesWithDependencies = useCallback((updater: (current: any) => any, options?: { preserveDates?: boolean }) => {
+    setNewTask((current) => {
+      const next = updater(current);
+      const dependencies = (next.dependencies || []).filter((dependency: any) => dependency.predecessorTaskId);
+      if (!dependencies.length || options?.preserveDates) return next;
+      const minimumStart = getDependencyMinimumStart(dependencies, next.earliestStartDate);
+      const shiftedStart = minimumStart > next.earliestStartDate ? minimumStart : next.earliestStartDate;
+      const deadlineDate = addWorkingDaysFrom(shiftedStart, Number(next.durationDays) || 1);
+      if (shiftedStart !== next.earliestStartDate || deadlineDate !== next.deadlineDate) {
+        setDependencyNotice(`Las fechas se ajustaron automáticamente por dependencias. Nuevo inicio: ${shiftedStart}.`);
+      }
+      return { ...next, earliestStartDate: shiftedStart, deadlineDate };
+    });
+  }, [getDependencyMinimumStart]);
+
+  const openTaskEditor = useCallback((task: any) => {
+    setNewTask(buildTaskModalPayload(task, getTaskEndDate));
+    setEditTaskId(task.id);
+    setTaskModal(null);
+    setShowTaskOptions(false);
+    setDependencyNotice('');
+    setCreationModal('task');
+  }, [getTaskEndDate]);
+
+  const removeDependencyFromSuccessor = useCallback(async (successorTaskId: string, dependencyId: string) => {
+    const successor = taskMap.get(successorTaskId);
+    if (!successor) return;
+    const dependencies = (successor.predecessorDeps || [])
+      .filter((dep: any) => dep.id !== dependencyId)
+      .map((dep: any) => ({ predecessorTaskId: dep.predecessorTaskId, dependencyType: dep.type, offsetDays: dep.offsetDays || 0 }));
+    await onUpdateTask(successorTaskId, { dependencies });
+    setTaskModal((current: any) => current && current.id === successorTaskId ? { ...current, predecessorDeps: (current.predecessorDeps || []).filter((dep: any) => dep.id !== dependencyId) } : current);
+  }, [onUpdateTask, taskMap]);
+
+  const isTaskRelated = useCallback((taskId: string) => highlightedTaskId ? (taskId === highlightedTaskId || taskRelations.get(highlightedTaskId)?.has(taskId)) : false, [highlightedTaskId, taskRelations]);
+
   const closeCreationModal = () => {
     setCreationModal(null);
     setFormError('');
+    setDependencyNotice('');
   };
 
   const openCreationModal = (type: 'department' | 'employee' | 'task' | 'project') => {
     setFormError('');
+    setDependencyNotice('');
     if (type === 'department') setNewDepartment({ name: '', code: '' });
     if (type === 'employee') {
       setEmployeeModal(null);
@@ -556,6 +593,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
 
   const openTaskCreationPrefill = (prefill: { employeeId?: string; startDate?: string }) => {
     setFormError('');
+    setDependencyNotice('');
     setEditTaskId(null);
     setNewTask(buildInitialTaskState({
       ...prefill,
@@ -650,15 +688,15 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     });
   };
 
-  const getTaskEndDate = (task: any) => {
+  function getTaskEndDate(task: any) {
     const startDate = String(task.scheduledStartDate || task.earliestStartDate || '').slice(0, 10);
     if (startDate) return addWorkingDaysFrom(startDate, Number(task.durationDays) || 1);
     if (task.scheduledEndDateExclusive) return format(subDays(parseISO(String(task.scheduledEndDateExclusive).slice(0, 10)), 1), 'yyyy-MM-dd');
     if (task.deadlineDate) return String(task.deadlineDate).slice(0, 10);
     return '';
-  };
+  }
 
-  const getTaskStartDate = (task: any) => String(task.scheduledStartDate || task.earliestStartDate || '').slice(0, 10);
+  function getTaskStartDate(task: any) { return String(task.scheduledStartDate || task.earliestStartDate || '').slice(0, 10); }
 
   const submitProject = async (e: FormEvent) => {
     e.preventDefault();
@@ -770,80 +808,64 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
         <div className="sticky left-0 box-border z-10 shrink-0 border-r bg-slate-100 p-2 font-semibold" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{dep.name}</div>
         <div className="h-full" style={{ width: timelineWidth }} />
       </div>
-        {dep.employees.map((e: any) => <div key={e.employeeId} className="relative flex border-b h-[52px]" style={{ minWidth: totalRowWidth }}>
-          <button onClick={() => setEmployeeModal(e)} className="sticky left-0 z-10 box-border shrink-0 border-r bg-white px-2 text-left" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{e.employeeName}</button>
-          <div className="relative flex min-w-max">{dates.map((d) => <button type="button" key={d.toISOString()} onClick={() => openTaskCreationPrefill({ employeeId: e.employeeId, startDate: toDateKey(d) })} style={{ width: dayW }} className={`${isWeekend(d) ? 'bg-slate-100' : 'bg-white'} shrink-0 border-r transition hover:bg-blue-50`} />)}</div>
-          {filteredTasks.filter((x) => x.employeeId === e.employeeId).map((task: any) => {
-            const segments = buildTaskSegments(task, start, dayW);
-            return segments.map((segment, index) => (
-              <button key={`${task.id}-${segment.left}-${index}`} onClick={() => setTaskModal(task)} className="absolute top-2 h-8 overflow-hidden rounded px-2 text-left text-xs text-white" style={{ left: leftColumnWidth + segment.left, width: segment.width, background: task.project?.colorHex || '#334155' }}>{task.title} · {task.project?.projectName}</button>
-            ));
-          })}
-        </div>)}
+        {dep.employees.map((e: any) => {
+          const employeeTasks = filteredTasks.filter((x) => x.employeeId === e.employeeId);
+          return <div key={e.employeeId} className="relative flex border-b h-[64px]" style={{ minWidth: totalRowWidth }}>
+            <button onClick={() => setEmployeeModal(e)} className="sticky left-0 z-10 box-border shrink-0 border-r bg-white px-2 text-left" style={{ width: leftColumnWidth, minWidth: leftColumnWidth, maxWidth: leftColumnWidth }}>{e.employeeName}</button>
+            <div className="relative flex min-w-max">{dates.map((d) => <button type="button" key={d.toISOString()} onClick={() => openTaskCreationPrefill({ employeeId: e.employeeId, startDate: toDateKey(d) })} style={{ width: dayW }} className={`${isWeekend(d) ? 'bg-slate-100' : 'bg-white'} shrink-0 border-r transition hover:bg-blue-50`} />)}</div>
+            <svg width={timelineWidth} height={64} className="pointer-events-none absolute left-[260px] top-0 z-10 overflow-visible">
+              {employeeTasks.flatMap((task: any) => (task.predecessorDeps || []).map((dep: any) => {
+                const predecessor = taskMap.get(dep.predecessorTaskId);
+                if (!predecessor || predecessor.employeeId !== e.employeeId) return null;
+                const predecessorSegments = buildTaskSegments(predecessor, start, dayW);
+                const successorSegments = buildTaskSegments(task, start, dayW);
+                const lastPred = predecessorSegments.at(-1);
+                const firstSucc = successorSegments[0];
+                if (!lastPred || !firstSucc) return null;
+                const active = highlightedTaskId && (highlightedTaskId === task.id || highlightedTaskId === predecessor.id);
+                const faded = highlightedTaskId && !active;
+                const x1 = lastPred.left + lastPred.width;
+                const x2 = firstSucc.left;
+                return <g key={dep.id} opacity={faded ? 0.18 : 1}>
+                  <path d={`M ${x1} 32 H ${x1 + 10} V 18 H ${Math.max(x1 + 10, x2 - 8)} V 32 H ${x2}`} fill="none" stroke={active ? '#0f766e' : '#94a3b8'} strokeWidth="2.5" strokeDasharray={active ? '0' : '5 4'} />
+                  <path d={`M ${x2} 32 L ${x2 - 8} 28 L ${x2 - 8} 36 Z`} fill={active ? '#0f766e' : '#94a3b8'} />
+                </g>;
+              }))}
+            </svg>
+            {employeeTasks.map((task: any) => {
+              const segments = buildTaskSegments(task, start, dayW);
+              const active = isTaskRelated(task.id);
+              return segments.map((segment, index) => (
+                <button key={`${task.id}-${segment.left}-${index}`} onClick={() => setTaskModal(task)} onMouseEnter={() => setHighlightedTaskId(task.id)} onMouseLeave={() => setHighlightedTaskId(null)} className={`absolute top-3 h-9 overflow-hidden rounded px-2 text-left text-xs text-white transition ${highlightedTaskId && !active ? 'opacity-40' : 'opacity-100'} ${active ? 'ring-2 ring-teal-300 ring-offset-1' : ''}`} style={{ left: leftColumnWidth + segment.left, width: segment.width, background: task.project?.colorHex || '#334155' }}>
+                  <span className="block truncate">{task.title} · {task.project?.projectName}</span>
+                  {!!(task.predecessorDeps || []).length && <span className="mt-0.5 block text-[10px] text-white/90">↳ {task.predecessorDeps.length} dependencia(s)</span>}
+                </button>
+              ));
+            })}
+          </div>;
+        })}
       </div>)}
     </div>
 
-    {taskModal && <Modal onClose={() => { setTaskModal(null); setShowTaskOptions(false); }} title={taskModal.title}>
-      {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
-      <div className="relative flex justify-end">
-        <button type="button" className="rounded-md border border-slate-200 px-2 py-1" onClick={() => setShowTaskOptions((v) => !v)} aria-label={t.taskOptions}>⋯</button>
-        {showTaskOptions && <div className="absolute top-10 w-36 rounded-lg border border-slate-200 bg-white p-1 shadow-md">
-          <button type="button" className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100" onClick={() => {
-            setNewTask({
-              departmentId: taskModal.departmentId,
-              employeeId: taskModal.employeeId,
-              projectId: taskModal.projectId,
-              title: taskModal.title,
-              description: taskModal.description,
-              earliestStartDate: String(taskModal.earliestStartDate || taskModal.scheduledStartDate).slice(0, 10),
-              deadlineDate: String(taskModal.deadlineDate || getTaskEndDate(taskModal)).slice(0, 10),
-              durationDays: taskModal.durationDays,
-              priority: taskModal.priority,
-              status: taskModal.status,
-              dependencies: (taskModal.predecessorDeps || []).map((dep: any) => ({ predecessorTaskId: dep.predecessorTaskId, dependencyType: dep.type, offsetDays: dep.offsetDays || 0 }))
-            });
-            setEditTaskId(taskModal.id);
-            setTaskModal(null);
-            setShowTaskOptions(false);
-            setCreationModal('task');
-          }}>{t.editTask}</button>
-          <button type="button" className="block w-full rounded px-2 py-1 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => deleteTask(taskModal.id)}>{t.deleteTask}</button>
-        </div>}
-      </div>
-      <p className="text-slate-700">{t.description}: {taskModal.description}</p>
-      <p className="text-slate-700">{t.taskProject}: {taskModal.project?.projectName}</p>
-      <p className="text-slate-700">{t.taskPriority}: {taskModal.priority}</p>
-      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700">
-        <p className="mb-2 font-semibold text-slate-800">Dependencias</p>
-        {(taskModal.predecessorDeps || []).length ? (taskModal.predecessorDeps.map((dep: any) => <p key={dep.id}>Depende de: {dep.predecessor?.title} · Regla: {dep.type} · Offset: {dep.offsetDays || 0} día(s)</p>)) : <p>Sin dependencias configuradas.</p>}
-      </div>
-      <div className="grid gap-3 md:grid-cols-[1fr_260px] md:items-end">
-        <div className="space-y-3">
-          <p className="text-slate-700">{t.taskDuration}: {taskModal.durationDays} {t.days}</p>
-          <p className="text-slate-700">{t.taskStart}: {getTaskStartDate(taskModal)}</p>
-          <p className="text-slate-700">{t.taskEnd}: {getTaskEndDate(taskModal)}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3" aria-label={t.taskTimeline}>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t.taskTimeline}</p>
-          <div className="relative mt-4 h-8">
-            <div className="absolute top-1/2 h-[2px] w-full -translate-y-1/2 rounded-full bg-slate-300" />
-            <div className="absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-blue-700 bg-white" />
-            <div className="absolute right-0 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-blue-700 bg-white" />
-            <div className="absolute left-0 top-1/2 h-2 w-full -translate-y-1/2 rounded-full bg-blue-700/85" />
-          </div>
-          <div className="mt-2 flex items-start justify-between text-[11px] text-slate-600">
-            <div>
-              <p className="font-semibold text-slate-700">{t.taskTimelineFrom}</p>
-              <p>{getTaskStartDate(taskModal)}</p>
-            </div>
-            <div className="text-right">
-              <p className="font-semibold text-slate-700">{t.taskTimelineTo}</p>
-              <p>{getTaskEndDate(taskModal)}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Modal>}
+    {taskModal && <TaskDetailModal
+      task={taskModal}
+      onClose={() => { setTaskModal(null); setShowTaskOptions(false); setHighlightedTaskId(null); }}
+      formError={formError}
+      showTaskOptions={showTaskOptions}
+      setShowTaskOptions={setShowTaskOptions}
+      onEdit={() => openTaskEditor(taskModal)}
+      onDelete={() => deleteTask(taskModal.id)}
+      getTaskStartDate={getTaskStartDate}
+      getTaskEndDate={getTaskEndDate}
+      incomingDependencyActions={Object.fromEntries((taskModal.predecessorDeps || []).map((dep: any) => [dep.id, [
+        { label: 'Editar', onClick: () => openTaskEditor(taskModal) },
+        { label: 'Eliminar', variant: 'danger', onClick: () => removeDependencyFromSuccessor(taskModal.id, dep.id) }
+      ]]))}
+      outgoingDependencyActions={Object.fromEntries((taskModal.successorDeps || []).map((dep: any) => [dep.id, [
+        { label: 'Editar dependiente', onClick: () => dep.successor && openTaskEditor(taskMap.get(dep.successorTaskId) || dep.successor) },
+        { label: 'Eliminar', variant: 'danger', onClick: () => removeDependencyFromSuccessor(dep.successorTaskId, dep.id) }
+      ]]))}
+    />}
     {employeeModal && <Modal onClose={() => { setEmployeeModal(null); setShowEmployeeOptions(false); }} title={employeeModal.employeeName}>
       {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
       <div className="relative flex justify-end">
@@ -935,6 +957,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     {creationModal === 'task' && (
       <Modal onClose={closeCreationModal} title={t.createTask}>
         {formError && <p className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</p>}
+        {dependencyNotice && <p className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">{dependencyNotice}</p>}
         <form className="space-y-3 mt-3" onSubmit={submitTask}>
           <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.titleField} value={newTask.title} onChange={(e) => setNewTask((v) => ({ ...v, title: e.target.value }))} required />
           <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.description} value={newTask.description} onChange={(e) => setNewTask((v) => ({ ...v, description: e.target.value }))} required />
@@ -942,7 +965,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
             const employeeId = e.target.value;
             const employee = employees.find((x) => x.employeeId === employeeId);
             const earliestStartDate = getEmployeeNextFreeDate(employeeId);
-            setNewTask((v) => ({
+            syncTaskDatesWithDependencies((v) => ({
               ...v,
               employeeId,
               departmentId: employee?.departmentId || v.departmentId,
@@ -967,7 +990,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
                 value={newTask.durationDays}
                 onChange={(e) => {
                   const durationDays = Math.max(1, Number(e.target.value) || 1);
-                  setNewTask((v) => ({ ...v, durationDays, deadlineDate: addWorkingDaysFrom(v.earliestStartDate, durationDays) }));
+                  syncTaskDatesWithDependencies((v) => ({ ...v, durationDays, deadlineDate: addWorkingDaysFrom(v.earliestStartDate, durationDays) }));
                 }}
                 required
               />
@@ -980,6 +1003,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
                 value={newTask.earliestStartDate}
                 onChange={(e) => {
                   const earliestStartDate = toISODate(nextWorkingDay(parseISO(e.target.value)));
+                  setDependencyNotice('');
                   setNewTask((v) => ({ ...v, earliestStartDate, deadlineDate: addWorkingDaysFrom(earliestStartDate, Number(v.durationDays) || 1) }));
                 }}
                 required
@@ -994,7 +1018,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
                 onChange={(e) => {
                   const selectedEnd = e.target.value;
                   const durationDays = countWorkingDaysInclusive(newTask.earliestStartDate, selectedEnd);
-                  setNewTask((v) => ({ ...v, durationDays, deadlineDate: addWorkingDaysFrom(v.earliestStartDate, durationDays) }));
+                  syncTaskDatesWithDependencies((v) => ({ ...v, durationDays, deadlineDate: addWorkingDaysFrom(v.earliestStartDate, durationDays) }));
                 }}
                 required
               />
@@ -1014,18 +1038,18 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
               <p className="text-sm text-slate-500">Configura restricciones de planificación opcionales. Finish-to-Start obliga a que esta tarea empiece cuando la predecesora termine; el offset permite adelantar o retrasar días hábiles.</p>
             </div>
             {(newTask.dependencies || []).map((dependency: any, index: number) => <div key={`dep-${index}`} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[1.4fr_0.9fr_0.7fr_auto]">
-              <select className="rounded-lg border border-slate-200 p-3" value={dependency.predecessorTaskId} onChange={(e) => setNewTask((v: any) => ({ ...v, dependencies: (v.dependencies || []).map((item: any, itemIndex: number) => itemIndex === index ? { ...item, predecessorTaskId: e.target.value } : item) }))}>
+              <select className="rounded-lg border border-slate-200 p-3" value={dependency.predecessorTaskId} onChange={(e) => syncTaskDatesWithDependencies((v: any) => ({ ...v, dependencies: (v.dependencies || []).map((item: any, itemIndex: number) => itemIndex === index ? { ...item, predecessorTaskId: e.target.value } : item) }))}>
                 <option value="">Tarea predecesora</option>
-                {tasks.filter((task: any) => task.id !== editTaskId && task.id !== taskModal?.id).map((task: any) => <option key={task.id} value={task.id}>{task.title} · {task.project?.projectName}</option>)}
+                {availableDependencyTasks.map((task: any) => <option key={task.id} value={task.id}>{task.title} · {task.project?.projectName}</option>)}
               </select>
-              <select className="rounded-lg border border-slate-200 p-3" value={dependency.dependencyType} onChange={(e) => setNewTask((v: any) => ({ ...v, dependencies: (v.dependencies || []).map((item: any, itemIndex: number) => itemIndex === index ? { ...item, dependencyType: e.target.value } : item) }))}>
+              <select className="rounded-lg border border-slate-200 p-3" value={dependency.dependencyType} onChange={(e) => syncTaskDatesWithDependencies((v: any) => ({ ...v, dependencies: (v.dependencies || []).map((item: any, itemIndex: number) => itemIndex === index ? { ...item, dependencyType: e.target.value } : item) }))}>
                 <option value="FS">Finish to Start</option>
                 <option value="SS">Start to Start</option>
                 <option value="FF">Finish to Finish</option>
                 <option value="SF">Start to Finish</option>
               </select>
-              <input className="rounded-lg border border-slate-200 p-3" type="number" value={dependency.offsetDays} onChange={(e) => setNewTask((v: any) => ({ ...v, dependencies: (v.dependencies || []).map((item: any, itemIndex: number) => itemIndex === index ? { ...item, offsetDays: Number(e.target.value) || 0 } : item) }))} />
-              <button type="button" className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600" onClick={() => setNewTask((v: any) => ({ ...v, dependencies: (v.dependencies || []).filter((_: any, itemIndex: number) => itemIndex !== index) }))}>Eliminar</button>
+              <input className="rounded-lg border border-slate-200 p-3" type="number" value={dependency.offsetDays} onChange={(e) => syncTaskDatesWithDependencies((v: any) => ({ ...v, dependencies: (v.dependencies || []).map((item: any, itemIndex: number) => itemIndex === index ? { ...item, offsetDays: Number(e.target.value) || 0 } : item) }))} />
+              <button type="button" className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600" onClick={() => syncTaskDatesWithDependencies((v: any) => ({ ...v, dependencies: (v.dependencies || []).filter((_: any, itemIndex: number) => itemIndex !== index) }), { preserveDates: true })}>Eliminar</button>
             </div>)}
             <button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700" onClick={() => setNewTask((v: any) => ({ ...v, dependencies: [...(v.dependencies || []), { predecessorTaskId: '', dependencyType: 'FS', offsetDays: 0 }] }))}>Añadir dependencia</button>
           </div>
@@ -1033,17 +1057,5 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
         </form>
       </Modal>
     )}
-  </div>;
-}
-
-function Modal({ title, children, onClose }: any) {
-  return <div onClick={onClose} className="fixed inset-0 z-[120] bg-slate-900/55 backdrop-blur-[2px] px-4 py-6 md:px-6 md:py-10 flex items-center justify-center">
-    <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl shadow-blue-900/15 md:p-7">
-      <div className="mb-5 flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">{title}</h2>
-        <button aria-label="Close modal" onClick={onClose} className="rounded-full border border-slate-200 px-3 py-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700">✕</button>
-      </div>
-      <div className="space-y-3">{children}</div>
-    </div>
   </div>;
 }

@@ -2,15 +2,20 @@
 
 import { useMemo, useState } from 'react';
 import { addDays, differenceInCalendarDays, eachDayOfInterval, format, isAfter, parseISO } from 'date-fns';
+import { TaskDetailModal, addWorkingDaysFrom } from './task-shared';
 
 type Props = {
   projects: any[];
   employees: any[];
   departments: any[];
+  tasks: any[];
+  onUpdateTask: (taskId: string, data: any) => Promise<void>;
+  onDeleteTask: (taskId: string) => Promise<void>;
 };
 
 const DAY_WIDTH = 28;
 const ROW_HEIGHT = 44;
+const PROJECT_COLOR_FALLBACKS = ['#2563eb', '#7c3aed', '#0f766e', '#dc2626', '#ea580c', '#0891b2', '#65a30d'];
 
 function toDate(value: string | Date) {
   return typeof value === 'string' ? parseISO(String(value).slice(0, 10)) : value;
@@ -20,13 +25,48 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-export function ActiveProjectsOverview({ projects, employees, departments }: Props) {
+function hexToRgb(hex: string) {
+  const normalized = hex.replace('#', '');
+  const safe = normalized.length === 3 ? normalized.split('').map((part) => part + part).join('') : normalized;
+  const value = Number.parseInt(safe, 16);
+  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return `#${[r, g, b].map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function mix(hex: string, amount: number, target: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHex(
+    Math.round(r + (target - r) * amount),
+    Math.round(g + (target - g) * amount),
+    Math.round(b + (target - b) * amount)
+  );
+}
+
+function getProjectBaseColor(project: any, index: number) {
+  return project.colorHex || PROJECT_COLOR_FALLBACKS[index % PROJECT_COLOR_FALLBACKS.length];
+}
+
+function getTaskBarColor(baseColor: string, taskIndex: number) {
+  const cycle = taskIndex % 3;
+  if (cycle === 1) return mix(baseColor, 0.12, 255);
+  if (cycle === 2) return mix(baseColor, 0.12, 0);
+  return baseColor;
+}
+
+export function ActiveProjectsOverview({ projects, employees, departments, tasks, onUpdateTask, onDeleteTask }: Props) {
   const [projectFilter, setProjectFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [employeeFilter, setEmployeeFilter] = useState('all');
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>(projects.map((project) => project.id));
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [showTaskOptions, setShowTaskOptions] = useState(false);
+  const [formError, setFormError] = useState('');
+  const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
 
   const filteredProjects = useMemo(() => projects.filter((project) => {
     if (projectFilter !== 'all' && project.id !== projectFilter) return false;
@@ -39,6 +79,20 @@ export function ActiveProjectsOverview({ projects, employees, departments }: Pro
     return filteredPackages.length > 0;
   }), [projects, projectFilter, statusFilter, departmentFilter, employeeFilter]);
 
+  const getTaskStartDate = (task: any) => String(task.scheduledStartDate || task.earliestStartDate || '').slice(0, 10);
+  const getTaskEndDate = (task: any) => {
+    const startDate = getTaskStartDate(task);
+    if (startDate) return addWorkingDaysFrom(startDate, Number(task.durationDays) || 1);
+    return String(task.deadlineDate || '').slice(0, 10);
+  };
+
+  const openTask = (taskId: string) => {
+    const task = taskMap.get(taskId);
+    if (!task) return;
+    setSelectedTask(task);
+    setShowTaskOptions(false);
+  };
+
   return (
     <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -49,9 +103,9 @@ export function ActiveProjectsOverview({ projects, employees, departments }: Pro
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
           <div className="flex flex-wrap items-center gap-3">
             <Legend color="bg-slate-200" label="Marco del proyecto" />
-            <Legend color="bg-blue-600" label="Paquete planificado" />
             <Legend color="bg-amber-500" label="Con retraso estimado" />
             <Legend color="bg-emerald-500" label="Dependencia resaltada" />
+            <Legend color="bg-slate-900" label="Color estable por proyecto" />
           </div>
         </div>
       </div>
@@ -81,11 +135,12 @@ export function ActiveProjectsOverview({ projects, employees, departments }: Pro
       {!filteredProjects.length && <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No hay proyectos activos que coincidan con los filtros seleccionados.</div>}
 
       <div className="space-y-4">
-        {filteredProjects.map((project) => {
+        {filteredProjects.map((project, projectIndex) => {
           const isExpanded = expandedProjectIds.includes(project.id);
           const projectStart = toDate(project.startDate);
           const projectEnd = toDate(project.estimatedEndDate);
           const projectDays = eachDayOfInterval({ start: projectStart, end: projectEnd });
+          const baseColor = getProjectBaseColor(project, projectIndex);
           const visiblePackages = project.workPackages.filter((wp: any) => {
             if (departmentFilter !== 'all' && wp.departmentId !== departmentFilter) return false;
             if (employeeFilter !== 'all' && wp.employeeId !== employeeFilter) return false;
@@ -101,7 +156,7 @@ export function ActiveProjectsOverview({ projects, employees, departments }: Pro
               >
                 <div>
                   <div className="flex items-center gap-3">
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: project.colorHex }} />
+                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: baseColor }} />
                     <h3 className="text-lg font-semibold text-slate-900">{project.projectName}</h3>
                     <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">{project.status}</span>
                   </div>
@@ -112,6 +167,12 @@ export function ActiveProjectsOverview({ projects, employees, departments }: Pro
 
               {isExpanded && (
                 <div className="space-y-4 border-t border-slate-200 px-4 py-4">
+                  <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                    <span className="font-semibold text-slate-700">Leyenda del proyecto:</span>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-2 py-1"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: baseColor }} />Base</span>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-2 py-1"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: getTaskBarColor(baseColor, 1) }} />Variante clara</span>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-2 py-1"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: getTaskBarColor(baseColor, 2) }} />Variante oscura</span>
+                  </div>
                   <div className="overflow-x-auto">
                     <div style={{ minWidth: 360 + projectDays.length * DAY_WIDTH }}>
                       <div className="grid border-b border-slate-200 bg-white" style={{ gridTemplateColumns: `320px repeat(${projectDays.length}, ${DAY_WIDTH}px)` }}>
@@ -151,13 +212,11 @@ export function ActiveProjectsOverview({ projects, employees, departments }: Pro
                           const left = clamp(differenceInCalendarDays(start, projectStart), 0, Math.max(projectDays.length - 1, 0)) * DAY_WIDTH;
                           const span = Math.max(1, differenceInCalendarDays(end, start) + 1) * DAY_WIDTH;
                           const late = isAfter(end, projectEnd);
+                          const taskColor = late ? '#f59e0b' : getTaskBarColor(baseColor, index);
                           return (
-                            <div
-                              key={task.id}
-                              className="grid border-b border-slate-100 last:border-b-0"
-                              style={{ gridTemplateColumns: `320px repeat(${projectDays.length}, ${DAY_WIDTH}px)`, minHeight: ROW_HEIGHT }}
-                            >
+                            <div key={task.id} className="grid border-b border-slate-100 last:border-b-0" style={{ gridTemplateColumns: `320px repeat(${projectDays.length}, ${DAY_WIDTH}px)`, minHeight: ROW_HEIGHT }}>
                               <div className="sticky left-0 z-20 flex items-center gap-2 border-r border-slate-200 bg-white px-3 py-2">
+                                <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: taskColor }} />
                                 <div className="min-w-0">
                                   <p className="truncate text-sm font-medium text-slate-800">{task.title}</p>
                                   <p className="truncate text-xs text-slate-500">{task.employee?.employeeName || 'Sin asignar'} · {task.department?.name || 'Sin departamento'}</p>
@@ -171,8 +230,9 @@ export function ActiveProjectsOverview({ projects, employees, departments }: Pro
                                   type="button"
                                   onMouseEnter={() => setHoveredTaskId(task.id)}
                                   onMouseLeave={() => setHoveredTaskId(null)}
-                                  className={`absolute top-1/2 z-20 h-7 -translate-y-1/2 rounded-full px-3 text-left text-xs font-medium text-white shadow-sm ${late ? 'bg-amber-500' : 'bg-blue-600'}`}
-                                  style={{ left, width: span }}
+                                  onClick={() => openTask(task.id)}
+                                  className="absolute top-1/2 z-20 h-7 -translate-y-1/2 rounded-full px-3 text-left text-xs font-medium text-white shadow-sm"
+                                  style={{ left, width: span, backgroundColor: taskColor }}
                                   title={(task.predecessorDeps || []).map((dep: any) => `Depende de: ${dep.predecessor.title} · Regla: ${dep.type} ${dep.offsetDays ? `(${dep.offsetDays}d)` : ''}`).join('\n') || 'Sin dependencias'}
                                 >
                                   <span className="block truncate">{task.title}</span>
@@ -190,6 +250,51 @@ export function ActiveProjectsOverview({ projects, employees, departments }: Pro
           );
         })}
       </div>
+
+      {selectedTask && <TaskDetailModal
+        task={selectedTask}
+        onClose={() => { setSelectedTask(null); setShowTaskOptions(false); }}
+        formError={formError}
+        showTaskOptions={showTaskOptions}
+        setShowTaskOptions={setShowTaskOptions}
+        onEdit={() => { setShowTaskOptions(false); }}
+        onDelete={async () => {
+          try {
+            await onDeleteTask(selectedTask.id);
+            setSelectedTask(null);
+          } catch (error: any) {
+            setFormError(error?.message || 'No se pudo eliminar el paquete.');
+          }
+        }}
+        getTaskStartDate={getTaskStartDate}
+        getTaskEndDate={getTaskEndDate}
+        incomingDependencyActions={Object.fromEntries((selectedTask.predecessorDeps || []).map((dep: any) => [dep.id, [
+          { label: 'Editar dependencias', onClick: () => setShowTaskOptions(true) },
+          { label: 'Eliminar', variant: 'danger', onClick: async () => {
+            try {
+              const dependencies = (selectedTask.predecessorDeps || []).filter((item: any) => item.id !== dep.id).map((item: any) => ({ predecessorTaskId: item.predecessorTaskId, dependencyType: item.type, offsetDays: item.offsetDays || 0 }));
+              await onUpdateTask(selectedTask.id, { dependencies });
+              setSelectedTask((current: any) => current ? { ...current, predecessorDeps: (current.predecessorDeps || []).filter((item: any) => item.id !== dep.id) } : current);
+            } catch (error: any) {
+              setFormError(error?.message || 'No se pudo eliminar la dependencia.');
+            }
+          } }
+        ]]))}
+        outgoingDependencyActions={Object.fromEntries((selectedTask.successorDeps || []).map((dep: any) => [dep.id, [
+          { label: 'Editar dependiente', onClick: () => openTask(dep.successorTaskId) },
+          { label: 'Eliminar', variant: 'danger', onClick: async () => {
+            try {
+              const successor = taskMap.get(dep.successorTaskId);
+              if (!successor) return;
+              const dependencies = (successor.predecessorDeps || []).filter((item: any) => item.id !== dep.id).map((item: any) => ({ predecessorTaskId: item.predecessorTaskId, dependencyType: item.type, offsetDays: item.offsetDays || 0 }));
+              await onUpdateTask(dep.successorTaskId, { dependencies });
+              setSelectedTask((current: any) => current ? { ...current, successorDeps: (current.successorDeps || []).filter((item: any) => item.id !== dep.id) } : current);
+            } catch (error: any) {
+              setFormError(error?.message || 'No se pudo eliminar la dependencia.');
+            }
+          } }
+        ]]))}
+      />}
     </section>
   );
 }

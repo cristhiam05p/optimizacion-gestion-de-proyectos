@@ -156,25 +156,27 @@ export class TasksService {
         : [];
 
     const minimumDependencyStart = this.computeDependencyMinimumStart(baseStart, dependencies, locationCountry, locationSubdivision, employee.absences);
-    if (baseStart < minimumDependencyStart) {
-      const blockingDependency = dependencies.find((dep) => this.scheduling.resolveDependencyStart(baseStart, dep, locationCountry, locationSubdivision, employee.absences).getTime() === minimumDependencyStart.getTime()) || dependencies[0];
-      throw new DomainError('TASK_DEPENDENCY_VIOLATION', {
-        message: `La fecha de inicio viola una dependencia. ${this.formatDependencyRule(blockingDependency)}`,
-        dependency: {
-          predecessorTaskId: blockingDependency.predecessorTaskId,
-          predecessorTitle: blockingDependency.predecessor.title,
-          type: blockingDependency.type,
-          offsetDays: blockingDependency.offsetDays,
-          minimumStartDate: minimumDependencyStart
-        }
-      });
-    }
+    const dependencyAdjustment = baseStart < minimumDependencyStart
+      ? (() => {
+        const blockingDependency = dependencies.find((dep) => this.scheduling.resolveDependencyStart(baseStart, dep, locationCountry, locationSubdivision, employee.absences).getTime() === minimumDependencyStart.getTime()) || dependencies[0];
+        return {
+          message: `La fecha se ajustó automáticamente por dependencia. ${this.formatDependencyRule(blockingDependency)}`,
+          dependency: {
+            predecessorTaskId: blockingDependency.predecessorTaskId,
+            predecessorTitle: blockingDependency.predecessor.title,
+            type: blockingDependency.type,
+            offsetDays: blockingDependency.offsetDays,
+            minimumStartDate: minimumDependencyStart
+          }
+        };
+      })()
+      : null;
 
     const scheduled = this.scheduling.findEarliestFeasibleStart(minimumDependencyStart, tasks.filter((t: WorkPackage) => t.id !== existingId), data.durationDays, locationCountry, locationSubdivision, employee.absences);
     const collisions = this.scheduling.detectTaskCollisions({ employeeId: data.employeeId, scheduledStartDate: scheduled.start, scheduledEndDateExclusive: scheduled.endExclusive, id: existingId }, tasks);
     const deadlineRisk = this.scheduling.deadlineRisk(normalizedDeadline, scheduled.endExclusive);
 
-    return { scheduled, collisions, deadlineRisk, locationCountry, locationSubdivision, dependencies };
+    return { scheduled, collisions, deadlineRisk, locationCountry, locationSubdivision, dependencies, dependencyAdjustment };
   }
 
   private async syncDependencies(tx: any, taskId: string, dependencies: Array<{ predecessorTaskId: string; type: DependencyType; offsetDays: number }> | undefined) {

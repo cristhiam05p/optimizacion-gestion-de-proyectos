@@ -58,7 +58,7 @@ export default function Page() {
           onCreateProject={(data) => createProject.mutateAsync(data).then(() => undefined)}
         />
       ) : (
-        <ActiveProjectsOverview projects={activeProjects.data!} employees={employees.data!} departments={departments.data!} />
+        <ActiveProjectsOverview projects={activeProjects.data!} employees={employees.data!} departments={departments.data!} tasks={tasks.data!} onUpdateTask={(taskId, data) => updateTask.mutateAsync({ taskId, data }).then(() => undefined)} onDeleteTask={(taskId) => deleteTask.mutateAsync(taskId).then(() => undefined)} />
       )}
     </main>
   );

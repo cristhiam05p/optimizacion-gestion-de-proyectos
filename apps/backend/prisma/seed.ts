@@ -1,11 +1,29 @@
 import { PrismaClient } from '@prisma/client';
+import { addDays, startOfDay } from 'date-fns';
+
 const Priority = { NORMAL: 'NORMAL', HIGH: 'HIGH', MAXIMUM: 'MAXIMUM' } as const;
 const ProjectStatus = { ACTIVE: 'ACTIVE', PLANNED: 'PLANNED', ON_HOLD: 'ON_HOLD' } as const;
-const WorkPackageStatus = { PLANNED: 'PLANNED' } as const;
-const DependencyType = { FS: 'FS', SS: 'SS' } as const;
-import { addDays } from 'date-fns';
+const WorkPackageStatus = { PLANNED: 'PLANNED', IN_PROGRESS: 'IN_PROGRESS', BLOCKED: 'BLOCKED' } as const;
+const DependencyType = { FS: 'FS', SS: 'SS', FF: 'FF' } as const;
 
 const prisma = new PrismaClient();
+const SEED_TAG = '[dynamic-seed-v2]';
+
+function nextWeekday(date: Date) {
+  const current = startOfDay(new Date(date));
+  while ([0, 6].includes(current.getDay())) current.setDate(current.getDate() + 1);
+  return current;
+}
+
+function addWeekdays(date: Date, days: number) {
+  const current = nextWeekday(date);
+  let remaining = days;
+  while (remaining > 0) {
+    current.setDate(current.getDate() + 1);
+    if (![0, 6].includes(current.getDay())) remaining -= 1;
+  }
+  return current;
+}
 
 async function main() {
   await prisma.taskDependency.deleteMany();
@@ -16,89 +34,99 @@ async function main() {
   await prisma.project.deleteMany();
   await prisma.department.deleteMany();
 
-  const deps = await Promise.all([
+  const departments = await Promise.all([
     prisma.department.create({ data: { name: 'Engineering', code: 'ENG' } }),
     prisma.department.create({ data: { name: 'Operations', code: 'OPS' } }),
     prisma.department.create({ data: { name: 'Finance', code: 'FIN' } }),
     prisma.department.create({ data: { name: 'Product', code: 'PRD' } })
   ]);
 
-  const employees = await Promise.all(Array.from({ length: 8 }).map((_, idx) => prisma.employeeProfile.create({ data: {
-    employeeName: ['Ana Müller','Jörg Klein','Lucía Pérez','Marta Gómez','Nils Bauer','Sven Koch','Julia Roth','David Álvarez'][idx],
-    departmentId: deps[idx%4].id,
-    role: 'Specialist',
-    hourlyCost: 55 + idx * 5,
+  const employees = await Promise.all(['Ana Müller','Jörg Klein','Lucía Pérez','Marta Gómez','Nils Bauer','Sven Koch','Julia Roth','David Álvarez'].map((employeeName, idx) => prisma.employeeProfile.create({ data: {
+    employeeName,
+    departmentId: departments[idx % departments.length].id,
+    role: idx < 4 ? 'Lead Specialist' : 'Specialist',
+    hourlyCost: 55 + idx * 6,
     weeklyCapacityHours: 40,
     workLocationCountryCode: 'DE',
     workLocationSubdivisionCode: idx < 5 ? 'BW' : undefined,
     active: true
-  }})));
+  } })));
 
+  const today = nextWeekday(new Date());
   await prisma.employeeAbsence.createMany({ data: [
-    { employeeId: employees[0].employeeId, startDate: new Date('2026-01-12'), endDate: new Date('2026-01-14'), reason: 'Vacation' },
-    { employeeId: employees[1].employeeId, startDate: new Date('2026-01-19'), endDate: new Date('2026-01-20'), reason: 'Sick leave' }
+    { employeeId: employees[0].employeeId, startDate: addDays(today, 9), endDate: addDays(today, 11), reason: `${SEED_TAG} Vacation` },
+    { employeeId: employees[1].employeeId, startDate: addDays(today, 14), endDate: addDays(today, 15), reason: `${SEED_TAG} Sick leave` }
   ]});
 
-  const projects = await Promise.all([
-    prisma.project.create({ data: { projectName: 'Neckar ERP', projectCode: 'P-001', colorHex: '#2563eb', clientName: 'Neckar AG', status: ProjectStatus.ACTIVE, startDate: new Date('2026-01-05'), estimatedEndDate: new Date('2026-03-31') } }),
-    prisma.project.create({ data: { projectName: 'BW Compliance', projectCode: 'P-002', colorHex: '#16a34a', clientName: 'Land BW', status: ProjectStatus.ACTIVE, startDate: new Date('2026-01-12'), estimatedEndDate: new Date('2026-04-10') } }),
-    prisma.project.create({ data: { projectName: 'Logistics AI', projectCode: 'P-003', colorHex: '#dc2626', clientName: 'TransLog', status: ProjectStatus.PLANNED, startDate: new Date('2026-02-01'), estimatedEndDate: new Date('2026-05-15') } }),
-    prisma.project.create({ data: { projectName: 'CRM Lift', projectCode: 'P-004', colorHex: '#9333ea', clientName: 'Commerz', status: ProjectStatus.ACTIVE, startDate: new Date('2026-01-20'), estimatedEndDate: new Date('2026-04-24') } }),
-    prisma.project.create({ data: { projectName: 'Data Lake', projectCode: 'P-005', colorHex: '#f59e0b', clientName: 'AutoGroup', status: ProjectStatus.ON_HOLD, startDate: new Date('2026-02-15'), estimatedEndDate: new Date('2026-06-01') } })
-  ]);
+  const projectDefinitions = [
+    { projectName: 'Neckar ERP', projectCode: 'P-001', colorHex: '#2563eb', clientName: 'Neckar AG', status: ProjectStatus.ACTIVE, startOffset: 0, endOffset: 72 },
+    { projectName: 'BW Compliance', projectCode: 'P-002', colorHex: '#16a34a', clientName: 'Land BW', status: ProjectStatus.ACTIVE, startOffset: 5, endOffset: 88 },
+    { projectName: 'CRM Lift', projectCode: 'P-003', colorHex: '#9333ea', clientName: 'Commerz', status: ProjectStatus.ACTIVE, startOffset: 12, endOffset: 98 },
+    { projectName: 'Logistics AI', projectCode: 'P-004', colorHex: '#dc2626', clientName: 'TransLog', status: ProjectStatus.PLANNED, startOffset: 18, endOffset: 118 },
+    { projectName: 'Data Lake', projectCode: 'P-005', colorHex: '#f59e0b', clientName: 'AutoGroup', status: ProjectStatus.ON_HOLD, startOffset: 22, endOffset: 128 }
+  ];
 
-  const base = new Date('2026-01-05');
-  const tasks = [] as any[];
-  for (let i=0;i<20;i++) {
-    const employee = employees[i%8];
-    const start = addDays(base, i * 2);
-    tasks.push(await prisma.workPackage.create({ data: {
+  const projects = await Promise.all(projectDefinitions.map((project) => prisma.project.create({ data: {
+    projectName: project.projectName,
+    projectCode: project.projectCode,
+    colorHex: project.colorHex,
+    clientName: project.clientName,
+    status: project.status,
+    startDate: addDays(today, project.startOffset),
+    estimatedEndDate: addDays(today, project.endOffset)
+  } })));
+
+  const createdTasks: any[] = [];
+  for (let i = 0; i < 20; i += 1) {
+    const employee = employees[i % employees.length];
+    const project = projects[i % 4];
+    const start = nextWeekday(addDays(today, i * 3));
+    const durationDays = i % 4 === 0 ? 6 : i % 3 === 0 ? 4 : 3;
+    createdTasks.push(await prisma.workPackage.create({ data: {
       departmentId: employee.departmentId,
       employeeId: employee.employeeId,
-      title: `WP-${i+1}`,
-      description: `Work package ${i+1}`,
+      title: `WP-${i + 1}`,
+      description: `${SEED_TAG} Work package ${i + 1} for ${project.projectName}`,
       earliestStartDate: start,
-      deadlineDate: addDays(start, 8),
-      durationDays: i % 4 === 0 ? 5 : 3,
+      deadlineDate: addWeekdays(start, durationDays + 4),
+      durationDays,
       scheduledStartDate: start,
-      scheduledEndDateExclusive: addDays(start, (i % 4 === 0 ? 5 : 3)),
-      priority: i === 6 ? Priority.MAXIMUM : (i%3===0 ? Priority.HIGH : Priority.NORMAL),
-      projectId: projects[i%5].id,
-      status: WorkPackageStatus.PLANNED,
+      scheduledEndDateExclusive: addDays(addWeekdays(start, durationDays - 1), 1),
+      priority: i === 6 ? Priority.MAXIMUM : (i % 3 === 0 ? Priority.HIGH : Priority.NORMAL),
+      projectId: project.id,
+      status: i < 4 ? WorkPackageStatus.IN_PROGRESS : WorkPackageStatus.PLANNED,
       workLocationCountryCode: 'DE',
       workLocationSubdivisionCode: 'BW'
-    }}));
+    } }));
   }
 
-  // collision scenario
   await prisma.workPackage.create({ data: {
     departmentId: employees[0].departmentId,
     employeeId: employees[0].employeeId,
     title: 'Collision Candidate',
-    description: 'Intentional overlap',
-    earliestStartDate: new Date('2026-01-07'),
-    deadlineDate: new Date('2026-01-15'),
+    description: `${SEED_TAG} Intentional overlap candidate`,
+    earliestStartDate: addDays(today, 4),
+    deadlineDate: addDays(today, 10),
     durationDays: 3,
-    scheduledStartDate: new Date('2026-01-07'),
-    scheduledEndDateExclusive: new Date('2026-01-10'),
+    scheduledStartDate: addDays(today, 4),
+    scheduledEndDateExclusive: addDays(today, 7),
     priority: Priority.NORMAL,
     projectId: projects[0].id,
-    status: WorkPackageStatus.PLANNED,
+    status: WorkPackageStatus.BLOCKED,
     workLocationCountryCode: 'DE',
     workLocationSubdivisionCode: 'BW'
   }});
 
-  // late task
   await prisma.workPackage.create({ data: {
     departmentId: employees[2].departmentId,
     employeeId: employees[2].employeeId,
     title: 'Late package',
-    description: 'Will pass deadline',
-    earliestStartDate: new Date('2026-02-10'),
-    deadlineDate: new Date('2026-02-12'),
-    durationDays: 6,
-    scheduledStartDate: new Date('2026-02-10'),
-    scheduledEndDateExclusive: new Date('2026-02-18'),
+    description: `${SEED_TAG} Should exceed planned end`,
+    earliestStartDate: addDays(today, 28),
+    deadlineDate: addDays(today, 30),
+    durationDays: 7,
+    scheduledStartDate: addDays(today, 28),
+    scheduledEndDateExclusive: addDays(today, 36),
     priority: Priority.HIGH,
     projectId: projects[1].id,
     status: WorkPackageStatus.PLANNED,
@@ -106,10 +134,14 @@ async function main() {
     workLocationSubdivisionCode: 'BW'
   }});
 
-  await prisma.taskDependency.create({ data: { predecessorTaskId: tasks[0].id, successorTaskId: tasks[5].id, type: DependencyType.FS, offsetDays: 2 } });
-  await prisma.taskDependency.create({ data: { predecessorTaskId: tasks[2].id, successorTaskId: tasks[8].id, type: DependencyType.SS, offsetDays: 0 } });
+  await prisma.taskDependency.createMany({ data: [
+    { predecessorTaskId: createdTasks[0].id, successorTaskId: createdTasks[5].id, type: DependencyType.FS, offsetDays: 2 },
+    { predecessorTaskId: createdTasks[2].id, successorTaskId: createdTasks[8].id, type: DependencyType.SS, offsetDays: 0 },
+    { predecessorTaskId: createdTasks[4].id, successorTaskId: createdTasks[10].id, type: DependencyType.FF, offsetDays: 1 },
+    { predecessorTaskId: createdTasks[6].id, successorTaskId: createdTasks[14].id, type: DependencyType.FS, offsetDays: 0 }
+  ]});
 
-  console.log('Seed completed');
+  console.log('Seed completed with dynamic future-ready data');
 }
 
 main().finally(() => prisma.$disconnect());
