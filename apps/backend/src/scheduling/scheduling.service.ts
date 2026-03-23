@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { EmployeeAbsence, Priority, WorkPackage } from '@prisma/client';
+type DependencyType = 'FS' | 'SS' | 'FF' | 'SF';
+type EmployeeAbsence = any;
+type WorkPackage = any;
+const Priority = { MAXIMUM: 'MAXIMUM' } as const;
 import { addDays, differenceInCalendarDays, format, isAfter, isBefore, isEqual, isWeekend, startOfDay } from 'date-fns';
 
 const Holidays = require('date-holidays');
@@ -37,17 +40,40 @@ export class SchedulingService {
     return current;
   }
 
+  shiftWorkingDays(date: Date, offsetDays: number, countryCode: string, subdivisionCode?: string, absences: EmployeeAbsence[] = []) {
+    if (offsetDays === 0) return this.getNextWorkingDay(date, countryCode, subdivisionCode, absences);
+    let current = new Date(date);
+    let remaining = Math.abs(offsetDays);
+    const direction = offsetDays > 0 ? 1 : -1;
+    while (remaining > 0) {
+      current = addDays(current, direction);
+      if (this.isWorkingDay(current, countryCode, subdivisionCode, absences)) remaining -= 1;
+    }
+    return this.getNextWorkingDay(current, countryCode, subdivisionCode, absences);
+  }
+
   detectTaskCollisions(task: { employeeId: string; scheduledStartDate: Date; scheduledEndDateExclusive: Date; id?: string }, existing: WorkPackage[]) {
     return existing.filter((t) =>
       t.employeeId === task.employeeId && t.id !== task.id && task.scheduledStartDate < t.scheduledEndDateExclusive && task.scheduledEndDateExclusive > t.scheduledStartDate
     );
   }
 
-  resolveDependencies(taskStart: Date, deps: { type: 'FS'|'SS'; predecessor: WorkPackage }[]) {
+  resolveDependencyStart(taskStart: Date, dep: { type: DependencyType; offsetDays?: number; predecessor: WorkPackage }, countryCode: string, subdivisionCode?: string, absences: EmployeeAbsence[] = []) {
+    const offsetDays = Number(dep.offsetDays || 0);
+    const predecessorEndInclusive = addDays(dep.predecessor.scheduledEndDateExclusive, -1);
+    if (dep.type === 'FS') {
+      const base = offsetDays >= 0 ? dep.predecessor.scheduledEndDateExclusive : predecessorEndInclusive;
+      return this.shiftWorkingDays(base, offsetDays, countryCode, subdivisionCode, absences);
+    }
+    if (dep.type === 'SS') return this.shiftWorkingDays(dep.predecessor.scheduledStartDate, offsetDays, countryCode, subdivisionCode, absences);
+    if (dep.type === 'FF') return this.shiftWorkingDays(predecessorEndInclusive, offsetDays, countryCode, subdivisionCode, absences);
+    return this.shiftWorkingDays(dep.predecessor.scheduledStartDate, offsetDays, countryCode, subdivisionCode, absences);
+  }
+
+  resolveDependencies(taskStart: Date, deps: { type: DependencyType; offsetDays?: number; predecessor: WorkPackage }[], countryCode: string, subdivisionCode?: string, absences: EmployeeAbsence[] = []) {
     return deps.reduce((acc, dep) => {
-      if (dep.type === 'FS' && isBefore(acc, dep.predecessor.scheduledEndDateExclusive)) return dep.predecessor.scheduledEndDateExclusive;
-      if (dep.type === 'SS' && isBefore(acc, dep.predecessor.scheduledStartDate)) return dep.predecessor.scheduledStartDate;
-      return acc;
+      const candidate = this.resolveDependencyStart(acc, dep, countryCode, subdivisionCode, absences);
+      return isBefore(acc, candidate) ? candidate : acc;
     }, taskStart);
   }
 

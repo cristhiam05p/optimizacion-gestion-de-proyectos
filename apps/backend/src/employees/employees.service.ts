@@ -19,7 +19,7 @@ export class EmployeesService {
       visibleHours: this.scheduling.computeVisibleHours(employee.workPackages as any, startDate, days),
       weeklyOverload: this.scheduling.computeWeeklyOverload(employee.workPackages as any, employee.weeklyCapacityHours),
       totalVisibleTasks: employee.workPackages.length,
-      totalVisiblePlannedDays: employee.workPackages.reduce((a, b) => a + b.durationDays, 0)
+      totalVisiblePlannedDays: employee.workPackages.reduce((a: number, b: any) => a + b.durationDays, 0)
     };
   }
 }
