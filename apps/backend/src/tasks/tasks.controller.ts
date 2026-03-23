@@ -2,6 +2,12 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { TasksService } from './tasks.service';
 import { z } from 'zod';
 
+const DependencySchema = z.object({
+  predecessorTaskId: z.string(),
+  dependencyType: z.enum(['FS', 'SS', 'FF', 'SF']).default('FS'),
+  offsetDays: z.number().int().default(0)
+});
+
 const TaskSchema = z.object({
   departmentId: z.string(),
   employeeId: z.string(),
@@ -15,7 +21,8 @@ const TaskSchema = z.object({
   status: z.enum(['PLANNED', 'IN_PROGRESS', 'DONE', 'BLOCKED']).default('PLANNED'),
   workLocationCountryCode: z.string().optional(),
   workLocationSubdivisionCode: z.string().optional(),
-  resolution: z.string().optional()
+  resolution: z.string().optional(),
+  dependencies: z.array(DependencySchema).optional()
 });
 
 @Controller('tasks')

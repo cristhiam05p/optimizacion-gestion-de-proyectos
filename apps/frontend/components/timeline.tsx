@@ -363,7 +363,8 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       deadlineDate: addWorkingDaysFrom(earliestStartDate, DEFAULT_TASK_DURATION_DAYS),
       durationDays: DEFAULT_TASK_DURATION_DAYS,
       priority: 'NORMAL',
-      status: 'PLANNED'
+      status: 'PLANNED',
+      dependencies: []
     };
   };
 
@@ -391,7 +392,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
   const [newTask, setNewTask] = useState({
     ...buildInitialTaskState(),
   });
-  const [newProject, setNewProject] = useState({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED' });
+  const [newProject, setNewProject] = useState({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED', startDate: toISODate(new Date()), estimatedEndDate: toISODate(addDays(new Date(), 30)) });
 
   const t = I18N[language];
   const locale = DATE_LOCALE[language];
@@ -545,7 +546,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
         active: true
       });
     }
-    if (type === 'project') setNewProject({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED' });
+    if (type === 'project') setNewProject({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED', startDate: toISODate(new Date()), estimatedEndDate: toISODate(addDays(new Date(), 30)) });
     if (type === 'task') {
       setEditTaskId(null);
       setNewTask(buildInitialTaskState({ projectId: projectFilter !== 'all' ? projectFilter : undefined }));
@@ -596,10 +597,11 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     e.preventDefault();
     try {
       setFormError('');
+      const payload = { ...newTask, durationDays: Number(newTask.durationDays), dependencies: (newTask.dependencies || []).filter((dependency: any) => dependency.predecessorTaskId) };
       if (editTaskId) {
-        await onUpdateTask(editTaskId, { ...newTask, durationDays: Number(newTask.durationDays) });
+        await onUpdateTask(editTaskId, payload);
       } else {
-        await onCreateTask({ ...newTask, durationDays: Number(newTask.durationDays) });
+        await onCreateTask(payload);
       }
       setNewTask(buildInitialTaskState());
       setEditTaskId(null);
@@ -663,7 +665,7 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
     try {
       setFormError('');
       await onCreateProject(newProject);
-      setNewProject({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED' });
+      setNewProject({ projectName: '', projectCode: '', colorHex: '#2563eb', clientName: '', status: 'PLANNED', startDate: toISODate(new Date()), estimatedEndDate: toISODate(addDays(new Date(), 30)) });
       closeCreationModal();
     } catch (err: any) {
       setFormError(err?.message || t.errProject);
@@ -797,7 +799,8 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
               deadlineDate: String(taskModal.deadlineDate || getTaskEndDate(taskModal)).slice(0, 10),
               durationDays: taskModal.durationDays,
               priority: taskModal.priority,
-              status: taskModal.status
+              status: taskModal.status,
+              dependencies: (taskModal.predecessorDeps || []).map((dep: any) => ({ predecessorTaskId: dep.predecessorTaskId, dependencyType: dep.type, offsetDays: dep.offsetDays || 0 }))
             });
             setEditTaskId(taskModal.id);
             setTaskModal(null);
@@ -810,6 +813,10 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
       <p className="text-slate-700">{t.description}: {taskModal.description}</p>
       <p className="text-slate-700">{t.taskProject}: {taskModal.project?.projectName}</p>
       <p className="text-slate-700">{t.taskPriority}: {taskModal.priority}</p>
+      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700">
+        <p className="mb-2 font-semibold text-slate-800">Dependencias</p>
+        {(taskModal.predecessorDeps || []).length ? (taskModal.predecessorDeps.map((dep: any) => <p key={dep.id}>Depende de: {dep.predecessor?.title} · Regla: {dep.type} · Offset: {dep.offsetDays || 0} día(s)</p>)) : <p>Sin dependencias configuradas.</p>}
+      </div>
       <div className="grid gap-3 md:grid-cols-[1fr_260px] md:items-end">
         <div className="space-y-3">
           <p className="text-slate-700">{t.taskDuration}: {taskModal.durationDays} {t.days}</p>
@@ -904,6 +911,22 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
           <input className="w-full rounded-lg border border-slate-200 p-3" placeholder={t.client} value={newProject.clientName} onChange={(e) => setNewProject((v) => ({ ...v, clientName: e.target.value }))} required />
           <label className="text-sm font-medium text-slate-700">{t.color}</label>
           <input className="h-12 w-full cursor-pointer rounded-lg border border-slate-200 p-1" type="color" value={newProject.colorHex} onChange={(e) => setNewProject((v) => ({ ...v, colorHex: e.target.value }))} required />
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-sm text-slate-700">
+              <span>Inicio del proyecto</span>
+              <input className="w-full rounded-lg border border-slate-200 p-3" type="date" value={newProject.startDate} onChange={(e) => setNewProject((v) => ({ ...v, startDate: e.target.value }))} required />
+            </label>
+            <label className="space-y-1 text-sm text-slate-700">
+              <span>Fin estimado</span>
+              <input className="w-full rounded-lg border border-slate-200 p-3" type="date" value={newProject.estimatedEndDate} min={newProject.startDate} onChange={(e) => setNewProject((v) => ({ ...v, estimatedEndDate: e.target.value }))} required />
+            </label>
+          </div>
+          <select className="w-full rounded-lg border border-slate-200 p-3" value={newProject.status} onChange={(e) => setNewProject((v) => ({ ...v, status: e.target.value }))}>
+            <option value="PLANNED">PLANNED</option>
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="ON_HOLD">ON_HOLD</option>
+            <option value="COMPLETED">COMPLETED</option>
+          </select>
           <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{t.saveProject}</button>
         </form>
       </Modal>
@@ -976,6 +999,35 @@ export function Timeline({ employees, departments, projects, tasks, startDate, o
                 required
               />
             </label>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <select className="w-full rounded-lg border border-slate-200 p-3" value={newTask.priority} onChange={(e) => setNewTask((v) => ({ ...v, priority: e.target.value }))}>
+              <option value="LOW">LOW</option><option value="NORMAL">NORMAL</option><option value="HIGH">HIGH</option><option value="MAXIMUM">MAXIMUM</option>
+            </select>
+            <select className="w-full rounded-lg border border-slate-200 p-3" value={newTask.status} onChange={(e) => setNewTask((v) => ({ ...v, status: e.target.value }))}>
+              <option value="PLANNED">PLANNED</option><option value="IN_PROGRESS">IN_PROGRESS</option><option value="DONE">DONE</option><option value="BLOCKED">BLOCKED</option>
+            </select>
+          </div>
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div>
+              <p className="font-semibold text-slate-800">Dependencias</p>
+              <p className="text-sm text-slate-500">Configura restricciones de planificación opcionales. Finish-to-Start obliga a que esta tarea empiece cuando la predecesora termine; el offset permite adelantar o retrasar días hábiles.</p>
+            </div>
+            {(newTask.dependencies || []).map((dependency: any, index: number) => <div key={`dep-${index}`} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[1.4fr_0.9fr_0.7fr_auto]">
+              <select className="rounded-lg border border-slate-200 p-3" value={dependency.predecessorTaskId} onChange={(e) => setNewTask((v: any) => ({ ...v, dependencies: (v.dependencies || []).map((item: any, itemIndex: number) => itemIndex === index ? { ...item, predecessorTaskId: e.target.value } : item) }))}>
+                <option value="">Tarea predecesora</option>
+                {tasks.filter((task: any) => task.id !== editTaskId && task.id !== taskModal?.id).map((task: any) => <option key={task.id} value={task.id}>{task.title} · {task.project?.projectName}</option>)}
+              </select>
+              <select className="rounded-lg border border-slate-200 p-3" value={dependency.dependencyType} onChange={(e) => setNewTask((v: any) => ({ ...v, dependencies: (v.dependencies || []).map((item: any, itemIndex: number) => itemIndex === index ? { ...item, dependencyType: e.target.value } : item) }))}>
+                <option value="FS">Finish to Start</option>
+                <option value="SS">Start to Start</option>
+                <option value="FF">Finish to Finish</option>
+                <option value="SF">Start to Finish</option>
+              </select>
+              <input className="rounded-lg border border-slate-200 p-3" type="number" value={dependency.offsetDays} onChange={(e) => setNewTask((v: any) => ({ ...v, dependencies: (v.dependencies || []).map((item: any, itemIndex: number) => itemIndex === index ? { ...item, offsetDays: Number(e.target.value) || 0 } : item) }))} />
+              <button type="button" className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600" onClick={() => setNewTask((v: any) => ({ ...v, dependencies: (v.dependencies || []).filter((_: any, itemIndex: number) => itemIndex !== index) }))}>Eliminar</button>
+            </div>)}
+            <button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700" onClick={() => setNewTask((v: any) => ({ ...v, dependencies: [...(v.dependencies || []), { predecessorTaskId: '', dependencyType: 'FS', offsetDays: 0 }] }))}>Añadir dependencia</button>
           </div>
           <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500" type="submit">{editTaskId ? t.updateTask : t.saveTask}</button>
         </form>

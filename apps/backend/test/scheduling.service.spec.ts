@@ -1,5 +1,5 @@
 import { SchedulingService } from '../src/scheduling/scheduling.service';
-import { Priority } from '@prisma/client';
+const Priority = { MAXIMUM: 'MAXIMUM', NORMAL: 'NORMAL' } as const;
 
 describe('SchedulingService', () => {
   const service = new SchedulingService();
@@ -27,12 +27,12 @@ describe('SchedulingService', () => {
   });
 
   it('dependency validation FS', () => {
-    const resolved = service.resolveDependencies(new Date('2026-01-10'), [{ type: 'FS', predecessor: { scheduledEndDateExclusive: new Date('2026-01-15') } as any }]);
+    const resolved = service.resolveDependencies(new Date('2026-01-10'), [{ type: 'FS', predecessor: { scheduledEndDateExclusive: new Date('2026-01-15'), scheduledStartDate: new Date('2026-01-13') } as any }], 'DE');
     expect(resolved.toISOString().slice(0,10)).toBe('2026-01-15');
   });
 
   it('MAXIMUM priority cascading reschedule', () => {
-    const inserted = { id: 'x', priority: Priority.MAXIMUM, scheduledEndDateExclusive: new Date('2026-01-12') } as any;
+    const inserted = { id: 'x', priority: Priority.MAXIMUM, scheduledStartDate: new Date('2026-01-10'), scheduledEndDateExclusive: new Date('2026-01-12') } as any;
     const updates = service.cascadeReschedule(inserted, [
       inserted,
       { id: 'a', priority: Priority.NORMAL, scheduledStartDate: new Date('2026-01-11'), scheduledEndDateExclusive: new Date('2026-01-14'), durationDays: 2 } as any

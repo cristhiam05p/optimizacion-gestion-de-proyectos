@@ -1,4 +1,8 @@
-import { PrismaClient, Priority, ProjectStatus, WorkPackageStatus, DependencyType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+const Priority = { NORMAL: 'NORMAL', HIGH: 'HIGH', MAXIMUM: 'MAXIMUM' } as const;
+const ProjectStatus = { ACTIVE: 'ACTIVE', PLANNED: 'PLANNED', ON_HOLD: 'ON_HOLD' } as const;
+const WorkPackageStatus = { PLANNED: 'PLANNED' } as const;
+const DependencyType = { FS: 'FS', SS: 'SS' } as const;
 import { addDays } from 'date-fns';
 
 const prisma = new PrismaClient();
@@ -36,11 +40,11 @@ async function main() {
   ]});
 
   const projects = await Promise.all([
-    prisma.project.create({ data: { projectName: 'Neckar ERP', projectCode: 'P-001', colorHex: '#2563eb', clientName: 'Neckar AG', status: ProjectStatus.ACTIVE } }),
-    prisma.project.create({ data: { projectName: 'BW Compliance', projectCode: 'P-002', colorHex: '#16a34a', clientName: 'Land BW', status: ProjectStatus.ACTIVE } }),
-    prisma.project.create({ data: { projectName: 'Logistics AI', projectCode: 'P-003', colorHex: '#dc2626', clientName: 'TransLog', status: ProjectStatus.PLANNED } }),
-    prisma.project.create({ data: { projectName: 'CRM Lift', projectCode: 'P-004', colorHex: '#9333ea', clientName: 'Commerz', status: ProjectStatus.ACTIVE } }),
-    prisma.project.create({ data: { projectName: 'Data Lake', projectCode: 'P-005', colorHex: '#f59e0b', clientName: 'AutoGroup', status: ProjectStatus.ON_HOLD } })
+    prisma.project.create({ data: { projectName: 'Neckar ERP', projectCode: 'P-001', colorHex: '#2563eb', clientName: 'Neckar AG', status: ProjectStatus.ACTIVE, startDate: new Date('2026-01-05'), estimatedEndDate: new Date('2026-03-31') } }),
+    prisma.project.create({ data: { projectName: 'BW Compliance', projectCode: 'P-002', colorHex: '#16a34a', clientName: 'Land BW', status: ProjectStatus.ACTIVE, startDate: new Date('2026-01-12'), estimatedEndDate: new Date('2026-04-10') } }),
+    prisma.project.create({ data: { projectName: 'Logistics AI', projectCode: 'P-003', colorHex: '#dc2626', clientName: 'TransLog', status: ProjectStatus.PLANNED, startDate: new Date('2026-02-01'), estimatedEndDate: new Date('2026-05-15') } }),
+    prisma.project.create({ data: { projectName: 'CRM Lift', projectCode: 'P-004', colorHex: '#9333ea', clientName: 'Commerz', status: ProjectStatus.ACTIVE, startDate: new Date('2026-01-20'), estimatedEndDate: new Date('2026-04-24') } }),
+    prisma.project.create({ data: { projectName: 'Data Lake', projectCode: 'P-005', colorHex: '#f59e0b', clientName: 'AutoGroup', status: ProjectStatus.ON_HOLD, startDate: new Date('2026-02-15'), estimatedEndDate: new Date('2026-06-01') } })
   ]);
 
   const base = new Date('2026-01-05');
@@ -102,8 +106,8 @@ async function main() {
     workLocationSubdivisionCode: 'BW'
   }});
 
-  await prisma.taskDependency.create({ data: { predecessorTaskId: tasks[0].id, successorTaskId: tasks[5].id, type: DependencyType.FS } });
-  await prisma.taskDependency.create({ data: { predecessorTaskId: tasks[2].id, successorTaskId: tasks[8].id, type: DependencyType.SS } });
+  await prisma.taskDependency.create({ data: { predecessorTaskId: tasks[0].id, successorTaskId: tasks[5].id, type: DependencyType.FS, offsetDays: 2 } });
+  await prisma.taskDependency.create({ data: { predecessorTaskId: tasks[2].id, successorTaskId: tasks[8].id, type: DependencyType.SS, offsetDays: 0 } });
 
   console.log('Seed completed');
 }
