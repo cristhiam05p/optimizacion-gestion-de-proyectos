@@ -112,7 +112,7 @@ describe('timeline', () => {
     expect(screen.getByText('Hoy')).toBeInTheDocument();
   });
 
-  it('maps wheel vertical intent to horizontal-only movement in planning area', () => {
+  it('keeps vertical wheel intent without forced horizontal movement in planning area', () => {
     renderTimeline();
     const planning = screen.getByTestId('planning-scroll');
     Object.defineProperty(planning, 'clientWidth', { value: 800, configurable: true });
@@ -121,7 +121,7 @@ describe('timeline', () => {
 
     fireEvent.wheel(planning, { deltaY: 120, deltaX: 0 });
 
-    expect((planning as HTMLDivElement).scrollLeft).toBe(220);
+    expect((planning as HTMLDivElement).scrollLeft).toBe(100);
   });
 
   it('extends timeline dynamically while approaching right edge', () => {
@@ -157,7 +157,7 @@ describe('timeline', () => {
     expect(resetHeader).toBe(initialHeader);
   });
 
-  it('keeps vertical scroll position while converting wheel to horizontal movement', () => {
+  it('moves horizontally only on intentional horizontal interaction', () => {
     renderTimeline();
     const planning = screen.getByTestId('planning-scroll');
     Object.defineProperty(planning, 'clientWidth', { value: 800, configurable: true });
@@ -165,7 +165,7 @@ describe('timeline', () => {
     Object.defineProperty(planning, 'scrollLeft', { value: 100, writable: true, configurable: true });
     Object.defineProperty(planning, 'scrollTop', { value: 220, writable: true, configurable: true });
 
-    const event = new WheelEvent('wheel', { deltaY: 120, deltaX: 0, bubbles: true, cancelable: true });
+    const event = new WheelEvent('wheel', { deltaY: 120, deltaX: 0, shiftKey: true, bubbles: true, cancelable: true });
     planning.dispatchEvent(event);
 
     expect((planning as HTMLDivElement).scrollTop).toBe(220);
